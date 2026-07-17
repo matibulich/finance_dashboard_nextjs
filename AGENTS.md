@@ -21,6 +21,7 @@ app/
 │   │       ├── crypto/route.ts  # GET → CoinMarketCap
 │   │       └── stocks/route.ts  # GET → Yahoo Finance
 │   ├── lib/
+│   │   ├── cedears.ts           # getCedearRatio(symbol) desde cedears.json
 │   │   └── servicios/           # Login/Register services (existente)
 │   ├── types/
 │   │   ├── formState.ts         # (existente)
@@ -33,13 +34,18 @@ app/
 │   └── ui/
 │       ├── dashboard-content.tsx # Client component principal
 │       ├── dashboard-summary.tsx # Cards de totales
-│       ├── portfolio-modals.tsx  # AddAsset, ReduceAsset, DeleteConfirm, LiquidityModal
-│       ├── positions-table.tsx   # Tabla de posiciones
-│       ├── toast.tsx             # Toast notifications
-│       └── components/button.tsx # (existente)
+│       ├── portfolio-modals.tsx  # AddAsset, SellAsset, DeleteConfirm, LiquidityModal
+│       ├── positions-table.tsx   # Tabla de posiciones (client, TimeElapsed)
+│       ├── theme-provider.tsx    # ThemeProvider (light/dark, localStorage)
+│       ├── theme-toggle.tsx      # ThemeToggle (lucide Moon/Sun)
+│       ├── toast.tsx             # Toast notifications (borde, colores por tipo)
+│       └── components/
+│           └── button.tsx        # Button con variantes slate-based
+├── globals.css                   # Tailwind v4, CSS vars light+dark (paleta slate)
 ├── proxy.ts                     # Antes middleware.ts → export proxy
-├── layout.tsx                   # (existente)
-└── page.tsx                     # Login (existente)
+├── layout.tsx                   # RootLayout con ThemeProvider
+├── page.tsx                     # Login (existente)
+└── favicon.png                  # favicon (reemplaza favicon.ico)
 ```
 
 ## Flujo de datos
@@ -167,6 +173,59 @@ PPP = (qty_actual * ppp_anterior + qty_nueva * precio_nuevo) / qty_total
 
 <!-- BEGIN:changelog -->
 # Changelog de Cambios
+
+## 2026-07-17
+
+### 1. Dark mode con ThemeProvider
+- **Archivos nuevos:** `theme-provider.tsx`, `theme-toggle.tsx`
+- **layout.tsx:** RootLayout envuelve children en `<ThemeProvider>`, agrega `suppressHydrationWarning` al `<html>`
+- **ThemeProvider:** Context con `theme` + `toggle()`, persiste en `localStorage`, respeta `prefers-color-scheme`
+- **ThemeToggle:** Botón con iconos `lucide-react` (Moon/Sun), integrado en el header del dashboard
+
+### 2. Rediseño visual completo con paleta Slate
+- **Paleta:** Todos los componentes migrados de `gray-*` a `slate-*` con variantes `dark:` para modo oscuro
+- **globals.css:** CSS variables reescritas con `oklch` + hue 285 (tono slate frío)
+- **Cards:** `rounded-xl`, `shadow-sm`, `hover:shadow-md`, labels `uppercase tracking-wide text-xs`
+- **P&L positivo:** `text-green-*` → `text-emerald-*` (mejor contraste en dark mode)
+- **Tags tipo:** Badges con `ring-1` outline, amber para crypto, blue para CEDEARs
+
+### 3. Button redesign
+- **Archivo:** `app/(frontend)/ui/components/button.tsx`
+- **Variante default:** `bg-slate-900 text-white` (light) / `bg-slate-100 text-slate-900` (dark)
+- **Variante destructive:** outline rojo (`bg-red-50 border-red-200`) en vez de bg rojo sólido
+- **Tamaños:** Renumerados (h-9 default, h-8 sm, h-10 lg)
+
+### 4. Modales rediseñados
+- **Archivo:** `app/(frontend)/ui/portfolio-modals.tsx`
+- **Shared classes:** `inputClass`, `labelClass`, `hintClass`, `errorClass`, `modalOverlay`, `modalCard`, `closeBtn`
+- **Close button:** Icono `lucide-react` `<X>` en vez de texto "✕"
+- **Backdrop:** `bg-slate-900/20 backdrop-blur-sm` (light) / `bg-black/50` (dark)
+
+### 5. Toast con borde y colores por tipo
+- **Archivo:** `app/(frontend)/ui/toast.tsx`
+- **Nuevo estilo:** Borde con `border-emerald-*` (success) / `border-red-*` (error), fondo pastel
+- **Fix memory leak:** Timers se guardan en `Map` y se limpian en el cleanup del `useEffect`
+
+### 6. PositionsTable ahora es Client Component
+- **Archivo:** `app/(frontend)/ui/positions-table.tsx`
+- **Cambio:** Agregado `"use client"` + `TimeElapsed` como componente React (usa `useState`/`useEffect`)
+- **Razón:** Evitar hydration mismatch por `new Date()` en servidor vs cliente
+
+### 7. Liquidez: modo agregar (no reemplazar)
+- **Archivo:** `app/(frontend)/ui/portfolio-modals.tsx` (LiquidityModal)
+- **Cambio:** defaultValue del input cambiado de `currentLiquidity` a `0`
+- **Texto:** "Monto a agregar" en vez de "Monto en ARS", muestra liquidez actual en la descripción
+
+### 8. Schema: índices para performance
+- **Archivo:** `prisma/schema.prisma`
+- **Nuevos índices:** `@@index([userId])` en Asset y Transaction, `@@index([userId, soldAt])` en PnLHistory
+
+### 9. Limpieza de assets estáticos
+- **Eliminados:** `favicon.ico`, `public/file.svg`, `public/globe.svg`, `public/next.svg`, `public/vercel.svg`, `public/window.svg`
+- **Nuevo:** `app/favicon.png`
+
+### 10. Footer simplificado
+- **layout.tsx:** Footer cambió de "Hecho con ❤️ por mi" a "Dashboard Financiero by Mati Bulich" con estilo `border-t text-xs text-slate-400`
 
 ## 2026-07-15
 

@@ -18,13 +18,10 @@ const configCookies= {
 
 
 export async function registerUser(prevState: FormState, formData: FormData):Promise<FormState> {
-    //console.log("🔴 registerUser llamado");
     const fields = Object.fromEntries(formData.entries()) as RegisterData;
-   // console.log("📝 Datos del formulario:", fields);
     const validation = registerSchema.safeParse(fields);
 
     if (!validation.success) {
-        //console.log("❌ Validación fallida:", validation.error.flatten().fieldErrors);
         return {
             success: false,
             message: "Error de validación",
@@ -35,15 +32,12 @@ export async function registerUser(prevState: FormState, formData: FormData):Pro
 
 
     try {
-        //console.log("🟢 Llamando a registerUserService...");
       const response =  await registerUserService(fields);
-        //console.log("✅ Usuario registrado exitosamente:", fields);
 
         // Guardar el token JWT en una cookie
         const cookieStore = await cookies();
         const jwtToken = response.token_jwt;
        
-       // console.log("🔐 Token JWT guardado en cookie");
 
        if(!response.token_jwt){
         return {
@@ -60,7 +54,6 @@ export async function registerUser(prevState: FormState, formData: FormData):Pro
 
       
     } catch (error) {
-        //console.error("🔥 Error en registro:", error);
         return {
             success: false,
             message:

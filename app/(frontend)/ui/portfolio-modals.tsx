@@ -1,10 +1,10 @@
 "use client";
 
 import { useActionState, useState, useRef, useEffect, useCallback } from "react";
+import { X } from "lucide-react";
 import { Button } from "@/app/(frontend)/ui/components/button";
 import {
   addAsset,
-  removeAsset,
   sellAsset,
   updateLiquidity,
   clearLiquidity,
@@ -14,6 +14,17 @@ import { showToast } from "@/app/(frontend)/ui/toast";
 import { AssetType } from "@prisma/client";
 
 const initialState: PortfolioActionState = { success: false, message: "" };
+
+const inputClass =
+  "mt-1 block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm transition-colors duration-200 placeholder:text-slate-400 focus:border-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/5 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-slate-500 dark:focus:ring-slate-100/10";
+
+const labelClass = "block text-sm font-medium text-slate-700 dark:text-slate-300";
+const hintClass = "mt-1 text-xs text-slate-400 dark:text-slate-500";
+const errorClass = "text-sm text-red-600 dark:text-red-400";
+const modalOverlay = "fixed inset-0 z-40 flex items-center justify-center bg-slate-900/20 backdrop-blur-sm dark:bg-black/50";
+const modalCard = "relative w-full max-w-md rounded-xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900";
+const modalCardSm = "relative w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-slate-900";
+const closeBtn = "absolute right-4 top-4 rounded-lg p-1 text-slate-400 transition-colors duration-200 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300";
 
 function SymbolAutocomplete({
   type,
@@ -93,29 +104,29 @@ function SymbolAutocomplete({
         onFocus={() => { if (results.length > 0) setOpen(true); }}
         onBlur={() => setTimeout(() => setOpen(false), 200)}
         placeholder={type === "CRYPTO" ? "BTC, ETH, SOL..." : "AAPL, LLY.BA, KO.BA..."}
-        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        className={inputClass}
       />
       {open && (
         <ul
           ref={listRef}
-          className="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-md border border-gray-200 bg-white shadow-lg"
+          className="absolute z-50 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-800"
         >
           {loading && (
-            <li className="px-3 py-2 text-sm text-gray-400">Buscando...</li>
+            <li className="px-3 py-2 text-sm text-slate-400 dark:text-slate-500">Buscando...</li>
           )}
           {!loading && results.length === 0 && (
-            <li className="px-3 py-2 text-sm text-gray-400">Sin resultados</li>
+            <li className="px-3 py-2 text-sm text-slate-400 dark:text-slate-500">Sin resultados</li>
           )}
           {results.map((r, i) => (
             <li
               key={r.symbol}
               onMouseDown={() => handleSelect(r)}
-              className={`cursor-pointer px-3 py-2 text-sm hover:bg-blue-50 ${
-                i === selectedIndex ? "bg-blue-50" : ""
+              className={`cursor-pointer px-3 py-2 text-sm transition-colors duration-150 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-700 ${
+                i === selectedIndex ? "bg-slate-50 dark:bg-slate-700" : ""
               }`}
             >
-              <span className="font-medium text-gray-900">{r.symbol}</span>
-              <span className="ml-2 text-gray-500">{r.name}</span>
+              <span className="font-medium text-slate-900 dark:text-slate-100">{r.symbol}</span>
+              <span className="ml-2 text-slate-500 dark:text-slate-400">{r.name}</span>
             </li>
           ))}
         </ul>
@@ -166,34 +177,34 @@ export function AddAssetModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Agregar Activo</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            ✕
-          </button>
+    <div className={modalOverlay}>
+      <div className={modalCard}>
+        <button onClick={onClose} className={closeBtn}>
+          <X className="h-4 w-4" />
+        </button>
+        <div className="mb-5 pr-8">
+          <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Agregar Activo</h2>
         </div>
         <form action={action} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700">Tipo</label>
+            <label className={labelClass}>Tipo</label>
             <select
               name="type"
               value={assetType}
               onChange={(e) => setAssetType(e.target.value as AssetType)}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={inputClass}
             >
               <option value="CRYPTO">Criptomoneda</option>
-              <option value="STOCK">CEDEAR / Acción</option>
+              <option value="STOCK">CEDEAR / Accion</option>
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700">Símbolo</label>
+            <label className={labelClass}>Simbolo</label>
             <SymbolAutocomplete type={assetType} onSelect={handleSelect} />
             <input type="hidden" name="symbol" value={symbol} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700">Nombre</label>
+            <label className={labelClass}>Nombre</label>
             <input
               name="name"
               type="text"
@@ -201,12 +212,12 @@ export function AddAssetModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Bitcoin / Eli Lilly CEDEAR"
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={inputClass}
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700">Cantidad</label>
+              <label className={labelClass}>Cantidad</label>
               <input
                 name="quantity"
                 type="number"
@@ -214,11 +225,11 @@ export function AddAssetModal({
                 step="any"
                 min="0.00000001"
                 placeholder="0.00"
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={inputClass}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700">
+              <label className={labelClass}>
                 {assetType === "CRYPTO" ? "Precio USD" : "Precio (ARS)"}
               </label>
               <input
@@ -228,41 +239,41 @@ export function AddAssetModal({
                 step="any"
                 min="0.0001"
                 placeholder="0.00"
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={inputClass}
               />
               {assetType === "STOCK" && (
-                <p className="mt-1 text-xs text-gray-400">Precio del CEDEAR en pesos</p>
+                <p className={hintClass}>Precio del CEDEAR en pesos</p>
               )}
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700">Fecha de compra</label>
+            <label className={labelClass}>Fecha de compra</label>
             <input
               name="purchaseDate"
               type="date"
               defaultValue={today}
               max={today}
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={inputClass}
             />
           </div>
           {assetType === "STOCK" && (
             <div>
-              <label className="block text-sm font-medium text-gray-700">Dólar MEP (compra)</label>
+              <label className={labelClass}>Dolar MEP (compra)</label>
               <input
                 name="mepCompra"
                 type="number"
                 step="any"
                 min="0"
                 placeholder="API auto"
-                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={inputClass}
               />
-              <p className="mt-1 text-xs text-gray-400">Opcional. Si se vacía, usa el de la API</p>
+              <p className={hintClass}>Opcional. Si se vacia, usa el de la API</p>
             </div>
           )}
           {state.message && !state.success && (
-            <p className="text-sm text-red-500">{state.message}</p>
+            <p className={errorClass}>{state.message}</p>
           )}
-          <div className="flex justify-end gap-3">
+          <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
@@ -306,20 +317,20 @@ export function SellAssetModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-sm rounded-lg bg-white p-6 shadow-xl">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Vender {asset.symbol}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            ✕
-          </button>
+    <div className={modalOverlay}>
+      <div className={modalCardSm}>
+        <button onClick={onClose} className={closeBtn}>
+          <X className="h-4 w-4" />
+        </button>
+        <div className="mb-5 pr-8">
+          <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Vender {asset.symbol}</h2>
         </div>
-        <p className="mb-4 text-sm text-gray-600">
-          Tenés <strong>{asset.quantity}</strong> unidades. Ingresá la cantidad y el precio de venta.
+        <p className="mb-5 text-sm text-slate-600 dark:text-slate-400">
+          Tenes <strong className="text-slate-900 dark:text-slate-100">{asset.quantity}</strong> unidades. Ingresa la cantidad y el precio de venta.
         </p>
         <form action={action} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700">Cantidad a vender</label>
+            <label className={labelClass}>Cantidad a vender</label>
             <input
               name="quantity"
               type="number"
@@ -328,11 +339,11 @@ export function SellAssetModal({
               min="0.00000001"
               max={asset.quantity}
               placeholder="0.00"
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={inputClass}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700">Precio de venta (ARS)</label>
+            <label className={labelClass}>Precio de venta (ARS)</label>
             <input
               name="sellPriceARS"
               type="number"
@@ -341,22 +352,22 @@ export function SellAssetModal({
               min="0.0001"
               defaultValue={asset.currentPriceARS ?? asset.purchasePriceARS ?? ""}
               placeholder="0.00"
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={inputClass}
             />
             {asset.purchasePriceARS && (
-              <p className="mt-1 text-xs text-gray-400">
+              <p className={hintClass}>
                 P. compra: ${asset.purchasePriceARS.toLocaleString("es-AR", { minimumFractionDigits: 2 })}
               </p>
             )}
           </div>
           {state.message && !state.success && (
-            <p className="text-sm text-red-500">{state.message}</p>
+            <p className={errorClass}>{state.message}</p>
           )}
-          <div className="flex justify-end gap-3">
+          <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
             </Button>
-            <Button type="submit" disabled={pending} className="bg-red-600 text-white hover:bg-red-700">
+            <Button type="submit" disabled={pending} variant="destructive">
               {pending ? "Vendiendo..." : "Vender"}
             </Button>
           </div>
@@ -380,11 +391,13 @@ export function DeleteConfirmModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-sm rounded-lg bg-white p-6 shadow-xl">
-        <h2 className="text-lg font-semibold text-gray-900">Eliminar {asset.symbol}</h2>
-        <p className="mt-2 text-sm text-gray-600">
-          ¿Estás seguro de eliminar {asset.symbol} de tu cartera? Esta acción no se puede deshacer.
+    <div className={modalOverlay}>
+      <div className={modalCardSm}>
+        <div className="mb-5 pr-8">
+          <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Eliminar {asset.symbol}</h2>
+        </div>
+        <p className="text-sm text-slate-600 dark:text-slate-400">
+          Estas seguro de eliminar {asset.symbol} de tu cartera? Esta accion no se puede deshacer.
         </p>
         <div className="mt-6 flex justify-end gap-3">
           <Button type="button" variant="outline" onClick={onClose}>
@@ -392,7 +405,7 @@ export function DeleteConfirmModal({
           </Button>
           <Button
             type="button"
-            className="bg-red-600 text-white hover:bg-red-700"
+            variant="destructive"
             onClick={() => onConfirm(asset.id)}
           >
             Eliminar
@@ -432,35 +445,35 @@ export function LiquidityModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/50">
-      <div className="w-full max-w-sm rounded-lg bg-white p-6 shadow-xl">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Liquidez (ARS)</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            ✕
-          </button>
+    <div className={modalOverlay}>
+      <div className={modalCardSm}>
+        <button onClick={onClose} className={closeBtn}>
+          <X className="h-4 w-4" />
+        </button>
+        <div className="mb-5 pr-8">
+          <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Liquidez (ARS)</h2>
         </div>
-        <p className="mb-4 text-sm text-gray-600">
-          Dinero no invertido disponible en pesos. Se suma al saldo total de la cuenta.
+        <p className="mb-5 text-sm text-slate-600 dark:text-slate-400">
+          Dinero no invertido disponible en pesos. El monto se suma a la liquidez actual ({currentLiquidity.toLocaleString("es-AR", { style: "currency", currency: "ARS" })}).
         </p>
         <form action={action} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700">Monto en ARS</label>
+            <label className={labelClass}>Monto a agregar (ARS)</label>
             <input
               name="amount"
               type="number"
               required
               step="0.01"
               min="0"
-              defaultValue={currentLiquidity}
+              defaultValue={0}
               placeholder="0.00"
-              className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className={inputClass}
             />
           </div>
           {state.message && !state.success && (
-            <p className="text-sm text-red-500">{state.message}</p>
+            <p className={errorClass}>{state.message}</p>
           )}
-          <div className="flex justify-end gap-3">
+          <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="outline" onClick={async () => {
               const result = await clearLiquidity();
               if (result.success) {

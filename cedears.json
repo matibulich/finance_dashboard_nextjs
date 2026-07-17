@@ -2564,7 +2564,19 @@
       "ticker": "ZM",
       "mercado": "NASDAQ",
       "ratio": "47:1"
+    },
+
+    {
+      "compania": "SPACE EXPLORATION TECHNOLOGIES CORP.",
+      "ticker": "SPCX",
+      "mercado": "NASDAQ",
+      "ratio": "50:1"
+    },
+    {
+      "compania": "YPF S.A",
+      "ticker": "YPF",
+      "mercado": "ARG",
+      "ratio": "1:1"
     }
   ]
 }
-

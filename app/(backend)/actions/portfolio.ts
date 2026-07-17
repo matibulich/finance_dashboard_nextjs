@@ -11,27 +11,7 @@ import {
   PnLHistoryEntry,
 } from "@/app/(backend)/types/portfolio";
 import { AssetType } from "@prisma/client";
-import cedearsData from "@/cedears.json";
-
-type CedearEntry = {
-  compania: string;
-  ticker: string;
-  mercado: string;
-  ratio: string;
-};
-
-function getCedearRatio(symbol: string): { num: number; den: number } | null {
-  const entry = (cedearsData.dataset as CedearEntry[]).find(
-    (item) => item.ticker === symbol
-  );
-  if (!entry) return null;
-  const parts = entry.ratio.split(":");
-  if (parts.length !== 2) return null;
-  const num = parseInt(parts[0], 10);
-  const den = parseInt(parts[1], 10);
-  if (isNaN(num) || isNaN(den) || num === 0 || den === 0) return null;
-  return { num, den };
-}
+import { getCedearRatio } from "@/app/(backend)/lib/cedears";
 
 async function getUserIdFromToken(): Promise<string | null> {
   const cookieStore = await cookies();
@@ -45,33 +25,21 @@ async function getUserIdFromToken(): Promise<string | null> {
   }
 }
 
-async function fetchMEP(): Promise<MEPRate | null> {
+async function fetchDolarRates(): Promise<{ mep: MEPRate | null; ccl: MEPRate | null }> {
   try {
     const res = await fetch("https://dolarapi.com/v1/dolares", {
       next: { revalidate: 120 },
     });
-    if (!res.ok) return null;
+    if (!res.ok) return { mep: null, ccl: null };
     const data = await res.json();
-    const mep = data.find((d: { casa: string }) => d.casa === "bolsa");
-    if (!mep) return null;
-    return { compra: mep.compra, venta: mep.venta, fechaActualizacion: mep.fechaActualizacion };
+    const mepData = data.find((d: { casa: string }) => d.casa === "bolsa");
+    const cclData = data.find((d: { casa: string }) => d.casa === "contadoconliqui");
+    return {
+      mep: mepData ? { compra: mepData.compra, venta: mepData.venta, fechaActualizacion: mepData.fechaActualizacion } : null,
+      ccl: cclData ? { compra: cclData.compra, venta: cclData.venta, fechaActualizacion: cclData.fechaActualizacion } : null,
+    };
   } catch {
-    return null;
-  }
-}
-
-async function fetchCCL(): Promise<MEPRate | null> {
-  try {
-    const res = await fetch("https://dolarapi.com/v1/dolares", {
-      next: { revalidate: 120 },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    const ccl = data.find((d: { casa: string }) => d.casa === "contadoconliqui");
-    if (!ccl) return null;
-    return { compra: ccl.compra, venta: ccl.venta, fechaActualizacion: ccl.fechaActualizacion };
-  } catch {
-    return null;
+    return { mep: null, ccl: null };
   }
 }
 
@@ -178,9 +146,12 @@ export async function updateLiquidity(
       return { success: false, message: "El monto debe ser un número válido mayor o igual a 0" };
     }
 
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { liquidityARS: true } });
+    const currentLiquidity = Number(user?.liquidityARS ?? 0);
+
     await prisma.user.update({
       where: { id: userId },
-      data: { liquidityARS: Math.round(amount * 100) / 100 },
+      data: { liquidityARS: Math.round((currentLiquidity + amount) * 100) / 100 },
     });
 
     return { success: true, message: "Liquidez actualizada correctamente" };
@@ -265,6 +236,8 @@ export async function addAsset(
     let storedPrice = price;
     let purchasePriceARSValue: number | null = null;
 
+    const { mep: mepRate, ccl: cclRate } = await fetchDolarRates();
+
     if (type === AssetType.STOCK) {
       const baseSymbol = symbol.endsWith(".BA") ? symbol.slice(0, -3) : symbol;
       const ratio = getCedearRatio(baseSymbol);
@@ -272,12 +245,10 @@ export async function addAsset(
         const cclCompraRaw = formData.get("mepCompra") as string;
         let cclValue = cclCompraRaw ? parseFloat(cclCompraRaw) : null;
         if (!cclValue || cclValue <= 0) {
-          const ccl = await fetchCCL();
-          cclValue = ccl?.venta ?? null;
+          cclValue = cclRate?.venta ?? null;
         }
         if (!cclValue || cclValue <= 0) {
-          const mep = await fetchMEP();
-          cclValue = mep?.venta ?? null;
+          cclValue = mepRate?.venta ?? null;
         }
         if (!cclValue || cclValue <= 0) {
           return { success: false, message: "No se pudo obtener la cotización CCL ni MEP" };
@@ -286,62 +257,13 @@ export async function addAsset(
         purchasePriceARSValue = Math.round(price * 100) / 100;
       }
     } else if (type === AssetType.CRYPTO) {
-      const mep = await fetchMEP();
-      if (mep) {
-        purchasePriceARSValue = Math.round(price * mep.venta * 100) / 100;
+      if (mepRate) {
+        purchasePriceARSValue = Math.round(price * mepRate.venta * 100) / 100;
       }
     }
 
     const existing = await prisma.asset.findUnique({
       where: { userId_symbol: { userId, symbol } },
-    });
-
-    if (existing) {
-      const qtyActual = Number(existing.quantity);
-      const pppAnterior = Number(existing.averagePrice);
-      const qtyTotal = qtyActual + quantity;
-      const nuevoPPP = (qtyActual * pppAnterior + quantity * storedPrice) / qtyTotal;
-
-      const existingTotalARS = Number(existing.purchasePriceARS ?? 0) * qtyActual;
-      const newTotalARS = (purchasePriceARSValue ?? 0) * quantity;
-      const avgPurchaseARS = qtyTotal > 0 ? (existingTotalARS + newTotalARS) / qtyTotal : 0;
-
-      await prisma.asset.update({
-        where: { id: existing.id },
-        data: {
-          quantity: qtyTotal,
-          averagePrice: Math.round(nuevoPPP * 10000) / 10000,
-          purchasePriceARS: Math.round(avgPurchaseARS * 100) / 100,
-          name,
-        },
-      });
-    } else {
-      await prisma.asset.create({
-        data: {
-          userId,
-          symbol,
-          name,
-          type,
-          quantity,
-          averagePrice: Math.round(storedPrice * 10000) / 10000,
-          purchasePriceARS: purchasePriceARSValue,
-          purchaseDate,
-        },
-      });
-    }
-
-    const assetId = existing?.id ?? undefined;
-
-    await prisma.transaction.create({
-      data: {
-        userId,
-        assetId,
-        type: "ADD",
-        symbol,
-        quantity,
-        price: storedPrice,
-        total: quantity * storedPrice,
-      },
     });
 
     const user = await prisma.user.findUnique({ where: { id: userId }, select: { liquidityARS: true } });
@@ -355,32 +277,81 @@ export async function addAsset(
         costARS = price * quantity;
       }
     } else {
-      const mep = await fetchMEP();
-      if (mep) {
-        costARS = price * quantity * mep.venta;
+      if (mepRate) {
+        costARS = price * quantity * mepRate.venta;
       }
     }
 
-    if (costARS > 0 && currentLiquidity >= costARS) {
-      await prisma.user.update({
-        where: { id: userId },
-        data: {
-          liquidityARS: Math.round((currentLiquidity - costARS) * 100) / 100,
-          totalHistoricallyInvestedARS: {
-            increment: Math.round(costARS * 100) / 100,
+    await prisma.$transaction(async (tx) => {
+      if (existing) {
+        const qtyActual = Number(existing.quantity);
+        const pppAnterior = Number(existing.averagePrice);
+        const qtyTotal = qtyActual + quantity;
+        const nuevoPPP = (qtyActual * pppAnterior + quantity * storedPrice) / qtyTotal;
+
+        const existingTotalARS = Number(existing.purchasePriceARS ?? 0) * qtyActual;
+        const newTotalARS = (purchasePriceARSValue ?? 0) * quantity;
+        const avgPurchaseARS = qtyTotal > 0 ? (existingTotalARS + newTotalARS) / qtyTotal : 0;
+
+        await tx.asset.update({
+          where: { id: existing.id },
+          data: {
+            quantity: qtyTotal,
+            averagePrice: Math.round(nuevoPPP * 10000) / 10000,
+            purchasePriceARS: Math.round(avgPurchaseARS * 100) / 100,
+            name,
           },
+        });
+      } else {
+        await tx.asset.create({
+          data: {
+            userId,
+            symbol,
+            name,
+            type,
+            quantity,
+            averagePrice: Math.round(storedPrice * 10000) / 10000,
+            purchasePriceARS: purchasePriceARSValue,
+            purchaseDate,
+          },
+        });
+      }
+
+      const assetId = existing?.id ?? undefined;
+
+      await tx.transaction.create({
+        data: {
+          userId,
+          assetId,
+          type: "ADD",
+          symbol,
+          quantity,
+          price: storedPrice,
+          total: quantity * storedPrice,
         },
       });
-    } else if (costARS > 0) {
-      await prisma.user.update({
-        where: { id: userId },
-        data: {
-          totalHistoricallyInvestedARS: {
-            increment: Math.round(costARS * 100) / 100,
+
+      if (costARS > 0 && currentLiquidity >= costARS) {
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            liquidityARS: Math.round((currentLiquidity - costARS) * 100) / 100,
+            totalHistoricallyInvestedARS: {
+              increment: Math.round(costARS * 100) / 100,
+            },
           },
-        },
-      });
-    }
+        });
+      } else if (costARS > 0) {
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            totalHistoricallyInvestedARS: {
+              increment: Math.round(costARS * 100) / 100,
+            },
+          },
+        });
+      }
+    });
 
     return { success: true, message: `${symbol} agregado correctamente` };
   } catch (error) {
@@ -484,8 +455,8 @@ export async function sellAsset(
     if (asset.type === AssetType.CRYPTO) {
       sellPriceUSD = sellPriceARS;
     } else {
-      const ccl = await fetchCCL();
-      const cclVenta = ccl?.venta ?? 0;
+      const { ccl: cclRate } = await fetchDolarRates();
+      const cclVenta = cclRate?.venta ?? 0;
       sellPriceUSD = cclVenta > 0 ? Math.round((sellPriceARS / cclVenta) * 100) / 100 : 0;
     }
 
@@ -503,44 +474,46 @@ export async function sellAsset(
       : 0;
 
     let deletedAsset = false;
-    if (quantityToSell >= qtyActual) {
-      await prisma.asset.delete({ where: { id: assetId } });
-      deletedAsset = true;
-    } else {
-      await prisma.asset.update({
-        where: { id: assetId },
-        data: { quantity: qtyActual - quantityToSell },
+    await prisma.$transaction(async (tx) => {
+      if (quantityToSell >= qtyActual) {
+        await tx.asset.delete({ where: { id: assetId } });
+        deletedAsset = true;
+      } else {
+        await tx.asset.update({
+          where: { id: assetId },
+          data: { quantity: qtyActual - quantityToSell },
+        });
+      }
+
+      await tx.pnLHistory.create({
+        data: {
+          userId,
+          assetId: deletedAsset ? null : assetId,
+          symbol: asset.symbol,
+          name: asset.name,
+          assetType: asset.type,
+          quantitySold: quantityToSell,
+          buyPriceUSD,
+          buyPriceARS,
+          sellPriceUSD,
+          sellPriceARS,
+          pnlARS,
+          pnlUSD,
+          totalInvestedARS,
+        },
       });
-    }
 
-    await prisma.pnLHistory.create({
-      data: {
-        userId,
-        assetId: deletedAsset ? null : assetId,
-        symbol: asset.symbol,
-        name: asset.name,
-        assetType: asset.type,
-        quantitySold: quantityToSell,
-        buyPriceUSD,
-        buyPriceARS,
-        sellPriceUSD,
-        sellPriceARS,
-        pnlARS,
-        pnlUSD,
-        totalInvestedARS,
-      },
-    });
-
-    await prisma.transaction.create({
-      data: {
-        userId,
-        assetId: deletedAsset ? null : assetId,
-        type: "REMOVE",
-        symbol: asset.symbol,
-        quantity: quantityToSell,
-        price: sellPriceUSD,
-        total: quantityToSell * sellPriceUSD,
-      },
+      await tx.transaction.create({
+        data: {
+          userId,
+          assetId: deletedAsset ? null : assetId,
+          type: "REMOVE",
+          symbol: asset.symbol,
+          quantity: quantityToSell,
+          price: sellPriceUSD,
+          total: quantityToSell * sellPriceUSD,
+        },
+      });
     });
 
     return { success: true, message: `${asset.symbol} vendido correctamente` };
@@ -688,13 +661,14 @@ export async function getPortfolio(): Promise<{
   const cryptoAssets = assets.filter((a) => a.type === AssetType.CRYPTO);
   const stockAssets = assets.filter((a) => a.type === AssetType.STOCK);
 
-  const [cryptoPrices, stockResult, mep, ccl] = await Promise.all([
+  const [cryptoPrices, stockResult, dolarRates] = await Promise.all([
     fetchCryptoPrices(cryptoAssets.map((a) => a.symbol)),
     fetchStockPrices(stockAssets.map((a) => a.symbol)),
-    fetchMEP(),
-    fetchCCL(),
+    fetchDolarRates(),
   ]);
 
+  const mep = dolarRates.mep;
+  const ccl = dolarRates.ccl;
   const stockPrices = stockResult.prices;
   const stockFallbacks = stockResult.fallbacks;
 

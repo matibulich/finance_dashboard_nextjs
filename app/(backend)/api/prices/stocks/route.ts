@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import cedearsData from "@/cedears.json";
+import { getCedearRatio } from "@/app/(backend)/lib/cedears";
 
 type StockPriceData = {
   symbol: string;
@@ -9,51 +9,18 @@ type StockPriceData = {
   changePercent: number;
 };
 
-type CedearEntry = {
-  compania: string;
-  ticker: string;
-  mercado: string;
-  ratio: string;
-};
-
-function getCedearRatio(symbol: string): { num: number; den: number } | null {
-  const entry = (cedearsData.dataset as CedearEntry[]).find(
-    (item) => item.ticker === symbol
-  );
-  if (!entry) return null;
-  const parts = entry.ratio.split(":");
-  if (parts.length !== 2) return null;
-  const num = parseInt(parts[0], 10);
-  const den = parseInt(parts[1], 10);
-  if (isNaN(num) || isNaN(den) || num === 0 || den === 0) return null;
-  return { num, den };
-}
-
-async function fetchCCLRate(): Promise<number | null> {
+async function fetchDolarRates(): Promise<{ ccl: number | null; mep: number | null }> {
   try {
     const res = await fetch("https://dolarapi.com/v1/dolares", {
       next: { revalidate: 120 },
     });
-    if (!res.ok) return null;
+    if (!res.ok) return { ccl: null, mep: null };
     const data = await res.json();
     const ccl = data.find((d: { casa: string }) => d.casa === "contadoconliqui");
-    return ccl?.venta ?? null;
-  } catch {
-    return null;
-  }
-}
-
-async function fetchMEPRate(): Promise<number | null> {
-  try {
-    const res = await fetch("https://dolarapi.com/v1/dolares", {
-      next: { revalidate: 120 },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
     const mep = data.find((d: { casa: string }) => d.casa === "bolsa");
-    return mep?.venta ?? null;
+    return { ccl: ccl?.venta ?? null, mep: mep?.venta ?? null };
   } catch {
-    return null;
+    return { ccl: null, mep: null };
   }
 }
 
@@ -132,7 +99,8 @@ export async function GET(request: NextRequest) {
   const symbols = symbolsParam.split(",").map((s) => s.trim()).filter(Boolean);
 
   try {
-    const cclRate = (await fetchCCLRate()) ?? (await fetchMEPRate()) ?? 0;
+    const dolarRates = await fetchDolarRates();
+    const cclRate = dolarRates.ccl ?? dolarRates.mep ?? 0;
     const results = await Promise.allSettled(
       symbols.map((s) => fetchYahooPrice(s, cclRate))
     );

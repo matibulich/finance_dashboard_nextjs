@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { AssetWithPrice, PortfolioSummary, MEPRate, PortfolioActionState, PnLHistoryEntry } from "@/app/(backend)/types/portfolio";
+import { AssetWithPrice, PortfolioSummary, MEPRate, PnLHistoryEntry } from "@/app/(backend)/types/portfolio";
 import { getPortfolio, setCustomMEP, resetHistoricallyInvested } from "@/app/(backend)/actions/portfolio";
 import { logoutUser } from "@/app/(backend)/actions/auth";
 import { DashboardSummary } from "@/app/(frontend)/ui/dashboard-summary";
@@ -9,6 +9,7 @@ import { PositionsTable } from "@/app/(frontend)/ui/positions-table";
 import { AddAssetModal, SellAssetModal, DeleteConfirmModal, LiquidityModal } from "@/app/(frontend)/ui/portfolio-modals";
 import { Button } from "@/app/(frontend)/ui/components/button";
 import { showToast } from "@/app/(frontend)/ui/toast";
+import { ThemeToggle } from "@/app/(frontend)/ui/theme-toggle";
 
 function formatARS(n: number) {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2 }).format(n);
@@ -16,11 +17,6 @@ function formatARS(n: number) {
 
 function formatUSD(n: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(n);
-}
-
-function formatPercent(n: number) {
-  const sign = n >= 0 ? "+" : "";
-  return `${sign}${n.toFixed(2)}%`;
 }
 
 export default function DashboardContent({
@@ -134,40 +130,45 @@ export default function DashboardContent({
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        <div className="flex gap-3 items-center">
-          <Button variant="outline" onClick={() => setShowLiquidityModal(true)}>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-100">Dashboard</h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <ThemeToggle />
+          <Button variant="outline" size="sm" onClick={() => setShowLiquidityModal(true)}>
             Liquidez
           </Button>
-          <div className="flex items-center gap-1">
-            <span className="text-sm text-gray-500">MEP:</span>
+          <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">MEP</span>
             <input
               type="number"
               value={mepInput}
               placeholder="Auto"
-              className="w-24 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="w-20 rounded border-0 bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-0 dark:text-slate-100 dark:placeholder:text-slate-500"
               onChange={(e) => setMepInput(e.target.value)}
               onBlur={(e) => handleSetMEP(e.target.value)}
             />
           </div>
-          <Button variant="outline" onClick={refresh} disabled={loading}>
-            {loading ? "Actualizando..." : "Refrescar Precios"}
+          <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
+            {loading ? "Actualizando..." : "Refrescar"}
           </Button>
-          <Button onClick={() => setShowAddModal(true)}>+ Agregar Activo</Button>
-          <Button variant="outline" onClick={() => logoutUser()}>Log Out</Button>
+          <Button size="sm" onClick={() => setShowAddModal(true)}>
+            Agregar Activo
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => logoutUser()}>
+            Salir
+          </Button>
         </div>
       </div>
 
-      <div className="flex gap-4 border-b border-gray-200">
+      <div className="flex gap-0 border-b border-slate-200 dark:border-slate-700">
         {tabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-all duration-200 ease-out ${
               activeTab === tab.key
-                ? "border-blue-600 text-blue-600"
-                : "border-transparent text-gray-500 hover:text-gray-700"
+                ? "border-slate-900 text-slate-900 dark:border-slate-100 dark:text-slate-100"
+                : "border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
             }`}
           >
             {tab.label}
@@ -179,33 +180,39 @@ export default function DashboardContent({
         <>
           <DashboardSummary summary={summary} mep={mep} />
 
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
-            <div className="flex items-center gap-6 text-sm flex-wrap">
+          <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <div className="flex items-center gap-8 text-sm flex-wrap">
               <div>
-                <span className="text-gray-500">Invertido históricamente: </span>
-                <span className="font-medium text-gray-900">{formatARS(totalHistoricallyInvestedARS)}</span>
+                <span className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Invertido historicamente</span>
+                <p className="mt-0.5 font-semibold text-slate-900 dark:text-slate-100">{formatARS(totalHistoricallyInvestedARS)}</p>
               </div>
+              <div className="h-8 w-px bg-slate-200 dark:bg-slate-700" />
               <div>
-                <span className="text-gray-500">P&L vendidos {pnlDateLabel}: </span>
-                <span className={`font-medium ${cumulativePnL >= 0 ? "text-green-600" : "text-red-600"}`}>
-                  {formatARS(cumulativePnL)}
-                </span>
-                {pnlReturnPercent !== null && (
-                  <span className={`ml-2 text-xs ${pnlReturnPercent >= 0 ? "text-green-600" : "text-red-600"}`}>
-                    ({pnlReturnPercent >= 0 ? "+" : ""}{pnlReturnPercent.toFixed(2)}%)
+                <span className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">P&L vendidos {pnlDateLabel}</span>
+                <div className="mt-0.5 flex items-baseline gap-2">
+                  <span className={`font-semibold ${cumulativePnL >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                    {formatARS(cumulativePnL)}
                   </span>
-                )}
+                  {pnlReturnPercent !== null && (
+                    <span className={`text-xs font-medium ${pnlReturnPercent >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                      {pnlReturnPercent >= 0 ? "+" : ""}{pnlReturnPercent.toFixed(2)}%
+                    </span>
+                  )}
+                </div>
               </div>
+              <div className="h-8 w-px bg-slate-200 dark:bg-slate-700" />
               <div>
-                <span className="text-gray-500">P&L total (vendidos + cartera): </span>
-                <span className={`font-medium ${totalPnL >= 0 ? "text-green-600" : "text-red-600"}`}>
-                  {formatARS(totalPnL)}
-                </span>
-                {totalPnLReturnPercent !== null && (
-                  <span className={`ml-2 text-xs ${totalPnLReturnPercent >= 0 ? "text-green-600" : "text-red-600"}`}>
-                    ({totalPnLReturnPercent >= 0 ? "+" : ""}{totalPnLReturnPercent.toFixed(2)}%)
+                <span className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">P&L total (vendidos + cartera)</span>
+                <div className="mt-0.5 flex items-baseline gap-2">
+                  <span className={`font-semibold ${totalPnL >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                    {formatARS(totalPnL)}
                   </span>
-                )}
+                  {totalPnLReturnPercent !== null && (
+                    <span className={`text-xs font-medium ${totalPnLReturnPercent >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                      {totalPnLReturnPercent >= 0 ? "+" : ""}{totalPnLReturnPercent.toFixed(2)}%
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -219,74 +226,79 @@ export default function DashboardContent({
       )}
 
       {activeTab === "historial" && (
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <div className="mb-4 flex items-center justify-between">
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <div className="mb-5 flex items-center justify-between">
             <div>
-              <h2 className="text-lg font-semibold text-gray-900">Historial de Operaciones</h2>
-              <p className="mt-1 text-sm text-gray-500">
-                P&L vendidos {pnlDateLabel}: <span className={cumulativePnL >= 0 ? "text-green-600 font-medium" : "text-red-600 font-medium"}>
+              <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Historial de Operaciones</h2>
+              <div className="mt-1 flex items-center gap-3 text-sm">
+                <span className="text-slate-500 dark:text-slate-400">
+                  P&L vendidos {pnlDateLabel}:
+                </span>
+                <span className={`font-medium ${cumulativePnL >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
                   {formatARS(cumulativePnL)}
                 </span>
                 {pnlReturnPercent !== null && (
-                  <span className={`ml-2 text-xs ${pnlReturnPercent >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  <span className={`text-xs font-medium ${pnlReturnPercent >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
                     ({pnlReturnPercent >= 0 ? "+" : ""}{pnlReturnPercent.toFixed(2)}%)
                   </span>
                 )}
-                <span className="ml-4 text-gray-400">|</span>
-                <span className="ml-4">P&L total: </span>
-                <span className={totalPnL >= 0 ? "text-green-600 font-medium" : "text-red-600 font-medium"}>
+                <span className="text-slate-300 dark:text-slate-600">|</span>
+                <span className="text-slate-500 dark:text-slate-400">P&L total:</span>
+                <span className={`font-medium ${totalPnL >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
                   {formatARS(totalPnL)}
                 </span>
                 {totalPnLReturnPercent !== null && (
-                  <span className={`ml-1 text-xs ${totalPnLReturnPercent >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  <span className={`text-xs font-medium ${totalPnLReturnPercent >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
                     ({totalPnLReturnPercent >= 0 ? "+" : ""}{totalPnLReturnPercent.toFixed(2)}%)
                   </span>
                 )}
-              </p>
+              </div>
             </div>
-            <Button variant="outline" onClick={handleResetInvested} className="text-xs">
-              Resetear invertido histórico
+            <Button variant="outline" size="sm" onClick={handleResetInvested}>
+              Resetear invertido
             </Button>
           </div>
 
           {pnlHistory.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-4">No hay operaciones de venta registradas.</p>
+            <p className="text-sm text-slate-400 text-center py-8 dark:text-slate-500">No hay operaciones de venta registradas.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200 text-sm">
-                <thead className="bg-gray-50">
+              <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
+                <thead>
                   <tr>
-                    <th className="px-3 py-3 text-left font-medium text-gray-500">Fecha</th>
-                    <th className="px-3 py-3 text-left font-medium text-gray-500">Símbolo</th>
-                    <th className="px-3 py-3 text-left font-medium text-gray-500">Tipo</th>
-                    <th className="px-3 py-3 text-right font-medium text-gray-500">Cant.</th>
-                    <th className="px-3 py-3 text-right font-medium text-gray-500">P. Compra (ARS)</th>
-                    <th className="px-3 py-3 text-right font-medium text-gray-500">P. Venta (ARS)</th>
-                    <th className="px-3 py-3 text-right font-medium text-gray-500">P&L (ARS)</th>
-                    <th className="px-3 py-3 text-right font-medium text-gray-500">P&L (USD)</th>
-                    <th className="px-3 py-3 text-right font-medium text-gray-500">% P&L</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Fecha</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Simbolo</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Tipo</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Cant.</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">P. Compra (ARS)</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">P. Venta (ARS)</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">P&L (ARS)</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">P&L (USD)</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">% P&L</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {pnlHistory.map((h) => {
-                    const pnlColor = h.pnlARS >= 0 ? "text-green-600" : "text-red-600";
+                    const pnlColor = h.pnlARS >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
                     return (
-                      <tr key={h.id} className="hover:bg-gray-50">
-                        <td className="px-3 py-3 text-gray-700 text-xs">{new Date(h.soldAt).toLocaleDateString("es-AR")}</td>
-                        <td className="px-3 py-3 font-medium text-gray-900">{h.symbol}</td>
-                        <td className="px-3 py-3">
+                      <tr key={h.id} className="transition-colors duration-150 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                        <td className="px-4 py-3 text-slate-500 text-xs dark:text-slate-400">{new Date(h.soldAt).toLocaleDateString("es-AR")}</td>
+                        <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">{h.symbol}</td>
+                        <td className="px-4 py-3">
                           <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                            h.assetType === "CRYPTO" ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700"
+                            h.assetType === "CRYPTO"
+                              ? "bg-amber-50 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:ring-amber-800"
+                              : "bg-blue-50 text-blue-700 ring-1 ring-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:ring-blue-800"
                           }`}>
                             {h.assetType === "CRYPTO" ? "Cripto" : "CEDEAR"}
                           </span>
                         </td>
-                        <td className="px-3 py-3 text-right text-gray-700">{h.quantitySold}</td>
-                        <td className="px-3 py-3 text-right text-gray-700">{formatARS(h.buyPriceARS)}</td>
-                        <td className="px-3 py-3 text-right text-gray-700">{formatARS(h.sellPriceARS)}</td>
-                        <td className={`px-3 py-3 text-right font-medium ${pnlColor}`}>{formatARS(h.pnlARS)}</td>
-                        <td className={`px-3 py-3 text-right font-medium ${pnlColor}`}>{formatUSD(h.pnlUSD)}</td>
-                        <td className={`px-3 py-3 text-right font-medium ${pnlColor}`}>
+                        <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-400">{h.quantitySold}</td>
+                        <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-400">{formatARS(h.buyPriceARS)}</td>
+                        <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-400">{formatARS(h.sellPriceARS)}</td>
+                        <td className={`px-4 py-3 text-right font-medium ${pnlColor}`}>{formatARS(h.pnlARS)}</td>
+                        <td className={`px-4 py-3 text-right font-medium ${pnlColor}`}>{formatUSD(h.pnlUSD)}</td>
+                        <td className={`px-4 py-3 text-right font-medium ${pnlColor}`}>
                           {h.pnlPercent >= 0 ? "+" : ""}{h.pnlPercent.toFixed(2)}%
                         </td>
                       </tr>
