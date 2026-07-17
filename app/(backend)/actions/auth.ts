@@ -126,3 +126,9 @@ export async function loginUser(prevState: LoginState, formData: FormData):Promi
     redirect("/dashboard");
 
 }
+
+export async function logoutUser(): Promise<void> {
+    const cookieStore = await cookies();
+    cookieStore.delete("token");
+    redirect("/");
+}
