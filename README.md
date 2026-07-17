@@ -1,36 +1,88 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Finance Dashboard
 
-## Getting Started
+Dashboard financiero personal para gestionar portafolios de CEDEARs y criptomonedas, con precios en tiempo real y seguimiento de P&L.
 
-First, run the development server:
+## Funcionalidades
+
+- **Portafolio de activos** — Agregar, vender y eliminar CEDEARs y criptomonedas
+- **Precios en tiempo real** — CoinMarketCap (cripto), Yahoo Finance (CEDEARs), DolarApi (MEP/CCL)
+- **Cálculo PPP** — Precio Promedio Ponderado automático
+- **P&L completo** — Ganancia/pérdida en ARS y USD, por activo y acumulado
+- **Historial de operaciones** — Registro de ventas realizadas con P&L por operación
+- **Dolar MEP manual** — Override del dólar MEP desde el dashboard o al agregar activo
+- **Liquidez** — Rastreo de dinero no invertido en pesos
+- **Dark mode** — Tema claro/oscuro con persistencia en localStorage
+
+## Stack
+
+- **Framework:** Next.js 16 (App Router, React 19)
+- **Base de datos:** PostgreSQL + Prisma ORM
+- **Estilos:** Tailwind CSS v4 + shadcn/ui
+- **Auth:** JWT + bcrypt
+- **APIs externas:** CoinMarketCap, Yahoo Finance, DolarApi
+
+## Requisitos
+
+- Node.js 18+
+- PostgreSQL
+- API keys:
+  - `CMC_API_KEY` — [CoinMarketCap](https://coinmarketcap.com/api/) (free tier: 15K calls/mes)
+
+## Instalación
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+# Clonar el repositorio
+git clone https://github.com/matibulich/finance_dashboard_nextjs.git
+cd finance_dashboard_nextjs
+
+# Instalar dependencias
+pnpm install
+
+# Configurar variables de entorno
+cp .env.schema .env
+# Editar .env con tus valores
+
+# Generar cliente Prisma
+npx prisma generate
+
+# Ejecutar migraciones
+npx prisma db push
+
+# Iniciar desarrollo
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abrí [http://localhost:3000](http://localhost:3000) en el navegador.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Variables de entorno
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Variable | Descripción |
+|----------|-------------|
+| `DATABASE_URL` | URL de conexión a PostgreSQL |
+| `JWT_SECRET` | Secreto para firmar tokens JWT |
+| `CMC_API_KEY` | API key de CoinMarketCap |
 
-## Learn More
+## Estructura
 
-To learn more about Next.js, take a look at the following resources:
+```
+app/
+├── (backend)/
+│   ├── actions/          # Server Actions (auth, portfolio)
+│   ├── api/              # Route handlers (dolar, prices)
+│   ├── lib/              # Utilidades, servicios, cedears
+│   └── types/            # Tipos TypeScript
+├── (frontend)/
+│   ├── dashboard/        # Página principal (server component)
+│   ├── registro/         # Registro de usuario
+│   └── ui/               # Componentes client (dashboard, modals, table)
+├── globals.css           # Estilos globales + CSS variables
+├── layout.tsx            # Root layout con ThemeProvider
+└── page.tsx              # Login
+prisma/
+└── schema.prisma         # Schema de base de datos
+cedears.json              # Ratios de CEDEARs
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Licencia
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Proyecto privado.
