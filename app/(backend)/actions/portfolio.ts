@@ -473,6 +473,8 @@ export async function sellAsset(
       ? Math.round((pnlARS / totalInvestedARS) * 10000) / 100
       : 0;
 
+    const totalSellARS = Math.round(sellPriceARS * quantityToSell * 100) / 100;
+
     let deletedAsset = false;
     await prisma.$transaction(async (tx) => {
       if (quantityToSell >= qtyActual) {
@@ -512,6 +514,15 @@ export async function sellAsset(
           quantity: quantityToSell,
           price: sellPriceUSD,
           total: quantityToSell * sellPriceUSD,
+        },
+      });
+
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          liquidityARS: {
+            increment: totalSellARS,
+          },
         },
       });
     });
