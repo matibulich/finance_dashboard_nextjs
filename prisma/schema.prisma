@@ -7,9 +7,83 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum AssetType {
+  CRYPTO
+  STOCK
+}
+
+enum TxType {
+  ADD
+  REMOVE
+}
+
 model User {
-  id       String @id @default(uuid()) @db.Uuid
-  name     String
-  email     String @unique
-  password String
+  id                           String        @id @default(uuid()) @db.Uuid
+  name                         String
+  email                        String        @unique
+  password                     String
+  assets                       Asset[]
+  transactions                 Transaction[]
+  pnlHistory                   PnLHistory[]
+  liquidityARS                 Decimal       @default(0.0) @db.Decimal(18, 2)
+  customMEP                    Decimal?      @db.Decimal(18, 2)
+  totalHistoricallyInvestedARS Decimal       @default(0.0) @db.Decimal(18, 2)
+  pnlResetDate                 DateTime?
+  createdAt                    DateTime      @default(now())
+}
+
+model Asset {
+  id               String        @id @default(uuid()) @db.Uuid
+  userId           String        @db.Uuid
+  symbol           String
+  name             String
+  type             AssetType
+  quantity         Decimal       @db.Decimal(18, 8)
+  averagePrice     Decimal       @db.Decimal(18, 4)
+  purchasePriceARS Float?
+  purchaseDate     DateTime      @default(now())
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  user             User          @relation(fields: [userId], references: [id])
+  transactions     Transaction[]
+
+  @@unique([userId, symbol])
+  @@index([userId])
+}
+
+model Transaction {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  assetId   String?  @db.Uuid
+  type      TxType
+  symbol    String
+  quantity  Decimal  @db.Decimal(18, 8)
+  price     Decimal  @db.Decimal(18, 4)
+  total     Decimal  @db.Decimal(18, 4)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  asset     Asset?   @relation(fields: [assetId], references: [id])
+
+  @@index([userId])
+}
+
+model PnLHistory {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @db.Uuid
+  assetId          String?   @db.Uuid
+  symbol           String
+  name             String
+  assetType        AssetType
+  quantitySold     Decimal   @db.Decimal(18, 8)
+  buyPriceUSD      Decimal   @db.Decimal(18, 4)
+  buyPriceARS      Decimal   @db.Decimal(18, 4)
+  sellPriceUSD     Decimal   @db.Decimal(18, 4)
+  sellPriceARS     Decimal   @db.Decimal(18, 4)
+  pnlARS           Decimal   @db.Decimal(18, 4)
+  pnlUSD           Decimal   @db.Decimal(18, 4)
+  totalInvestedARS Decimal   @db.Decimal(18, 2)
+  soldAt           DateTime  @default(now())
+  user             User      @relation(fields: [userId], references: [id])
+
+  @@index([userId, soldAt])
 }
