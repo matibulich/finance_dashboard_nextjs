@@ -12,7 +12,7 @@ const configCookies= {
     httpOnly: true, //no accesible desde JavaScript
     secure: process.env.NODE_ENV === "production",//solo en HTTPS en producción
     sameSite: "lax" as const, //protección contra CSRF
-    maxAge: 60 * 60 * 24 * 7, // 7 días
+    maxAge: 60 * 60 * 24 * 1, // 1 día
     path: "/",//toda la aplicación   
 };   
 
