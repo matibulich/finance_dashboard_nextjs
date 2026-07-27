@@ -21,16 +21,34 @@ function formatPercent(n: number) {
   return `${sign}${n.toFixed(2)}%`;
 }
 
+function daysBetween(dateStr: string) {
+  const now = new Date();
+  const purchase = new Date(dateStr);
+  return Math.floor((now.getTime() - purchase.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 function TimeElapsed({ purchaseDate }: { purchaseDate: string }) {
   const [elapsed, setElapsed] = useState("—");
   useEffect(() => {
-    const now = new Date();
-    const purchase = new Date(purchaseDate);
-    const diffMs = now.getTime() - purchase.getTime();
-    const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-    setElapsed(`${days} dias`);
+    setElapsed(`${daysBetween(purchaseDate)} dias`);
   }, [purchaseDate]);
   return <>{elapsed}</>;
+}
+
+function annualizedReturn(pnlPercentARS: number, purchaseDate: string) {
+  const days = daysBetween(purchaseDate);
+  if (days <= 0) return "—";
+  const totalReturn = pnlPercentARS / 100;
+  const ann = (Math.pow(1 + totalReturn, 365 / days) - 1) * 100;
+  const sign = ann >= 0 ? "+" : "";
+  return `${sign}${ann.toFixed(2)}%`;
+}
+
+function annualizedColor(pnlPercentARS: number, purchaseDate: string) {
+  const days = daysBetween(purchaseDate);
+  if (days <= 0) return "";
+  const ann = (Math.pow(1 + pnlPercentARS / 100, 365 / days) - 1) * 100;
+  return ann >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
 }
 
 export function PositionsTable({
@@ -56,16 +74,16 @@ export function PositionsTable({
       <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
         <thead>
           <tr>
-            <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Simbolo</th>
+            <th className="sticky left-0 z-20 bg-white dark:bg-slate-900 px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500 border-r border-slate-200 dark:border-slate-700">Simbolo</th>
             <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Nombre</th>
             <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Tipo</th>
             <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Cantidad</th>
             <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">P. Compra (ARS)</th>
             <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">P. Actual (ARS)</th>
-            <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Equivalente USD</th>
             <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Total (ARS)</th>
             <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Total (USD)</th>
             <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Tiempo</th>
+            <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Rent. Anual</th>
             <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">P&L (ARS)</th>
             <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">P&L (USD)</th>
             <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">%</th>
@@ -74,12 +92,13 @@ export function PositionsTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-          {assets.map((asset) => {
+          {assets.map((asset, i) => {
             const pnlColor = asset.pnlUSD >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
             const percentColor = asset.pnlPercentARS >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
+            const rowBg = i % 2 === 1 ? "bg-slate-50/50 dark:bg-slate-800/30" : "";
             return (
-              <tr key={asset.id} className="transition-colors duration-150 hover:bg-slate-50 dark:hover:bg-slate-800/50">
-                <td className="px-4 py-3 font-medium text-slate-900 dark:text-slate-100">{asset.symbol}</td>
+              <tr key={asset.id} className={`transition-colors duration-150 hover:bg-slate-100 dark:hover:bg-slate-800/60 ${rowBg}`}>
+                <td className={`sticky left-0 z-10 px-4 py-3 font-medium text-slate-900 dark:text-slate-100 border-r border-slate-200 dark:border-slate-700 ${i % 2 === 1 ? "bg-slate-50 dark:bg-slate-800/30" : "bg-white dark:bg-slate-900"}`}>{asset.symbol}</td>
                 <td className="px-4 py-3 text-slate-600 dark:text-slate-400 max-w-[120px] truncate">{asset.name}</td>
                 <td className="px-4 py-3">
                   <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
@@ -97,7 +116,6 @@ export function PositionsTable({
                 <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-400">
                   {asset.currentPriceARS ? formatARS(asset.currentPriceARS) : "-"}
                 </td>
-                <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-400">{formatUSD(asset.currentPriceUSD)}</td>
                 <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-400">
                   {asset.currentPriceARS ? formatARS(asset.currentPriceARS * asset.quantity) : "-"}
                 </td>
@@ -106,6 +124,9 @@ export function PositionsTable({
                 </td>
                 <td className="px-4 py-3 text-center text-slate-500 dark:text-slate-400 text-xs">
                   <TimeElapsed purchaseDate={asset.purchaseDate} />
+                </td>
+                <td className={`px-4 py-3 text-right font-medium text-xs ${annualizedColor(asset.pnlPercentARS, asset.purchaseDate)}`}>
+                  {annualizedReturn(asset.pnlPercentARS, asset.purchaseDate)}
                 </td>
                 <td className={`px-4 py-3 text-right font-medium ${pnlColor}`}>{formatARS(asset.pnlARS)}</td>
                 <td className={`px-4 py-3 text-right font-medium ${pnlColor}`}>{formatUSD(asset.pnlUSD)}</td>
