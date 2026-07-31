@@ -25,10 +25,10 @@ model User {
   assets                       Asset[]
   transactions                 Transaction[]
   pnlHistory                   PnLHistory[]
+  capitalMovements             CapitalMovement[]
   liquidityARS                 Decimal       @default(0.0) @db.Decimal(18, 2)
   customMEP                    Decimal?      @db.Decimal(18, 2)
-  totalHistoricallyInvestedARS Decimal       @default(0.0) @db.Decimal(18, 2)
-  pnlResetDate                 DateTime?
+  capitalAportado              Decimal       @default(0.0) @db.Decimal(18, 2)
   createdAt                    DateTime      @default(now())
 }
 
@@ -86,4 +86,15 @@ model PnLHistory {
   user             User      @relation(fields: [userId], references: [id])
 
   @@index([userId, soldAt])
+}
+
+model CapitalMovement {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  type      String
+  amount    Decimal  @db.Decimal(18, 2)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
 }

@@ -1,12 +1,12 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { AssetWithPrice, PortfolioSummary, MEPRate, PnLHistoryEntry } from "@/app/(backend)/types/portfolio";
-import { getPortfolio, setCustomMEP, resetHistoricallyInvested } from "@/app/(backend)/actions/portfolio";
+import { AssetWithPrice, PortfolioSummary, MEPRate, PnLHistoryEntry, CapitalMovementEntry } from "@/app/(backend)/types/portfolio";
+import { getPortfolio, setCustomMEP } from "@/app/(backend)/actions/portfolio";
 import { logoutUser } from "@/app/(backend)/actions/auth";
 import { DashboardSummary } from "@/app/(frontend)/ui/dashboard-summary";
 import { PositionsTable } from "@/app/(frontend)/ui/positions-table";
-import { AddAssetModal, SellAssetModal, DeleteConfirmModal, LiquidityModal } from "@/app/(frontend)/ui/portfolio-modals";
+import { AddAssetModal, SellAssetModal, DeleteConfirmModal, LiquidityModal, CapitalMovementModal } from "@/app/(frontend)/ui/portfolio-modals";
 import { Button } from "@/app/(frontend)/ui/components/button";
 import { showToast } from "@/app/(frontend)/ui/toast";
 import { ThemeToggle } from "@/app/(frontend)/ui/theme-toggle";
@@ -24,25 +24,29 @@ export default function DashboardContent({
   initialSummary,
   initialMep,
   initialPnlHistory,
-  initialTotalHistoricallyInvestedARS,
-  initialPnlResetDate,
+  initialCapitalAportado,
+  initialCapitalMovements,
+  initialRentabilidad,
 }: {
   initialAssets: AssetWithPrice[];
   initialSummary: PortfolioSummary;
   initialMep: MEPRate | null;
   initialPnlHistory: PnLHistoryEntry[];
-  initialTotalHistoricallyInvestedARS: number;
-  initialPnlResetDate: string | null;
+  initialCapitalAportado: number;
+  initialCapitalMovements: CapitalMovementEntry[];
+  initialRentabilidad: number | null;
 }) {
   const [assets, setAssets] = useState(initialAssets);
   const [summary, setSummary] = useState(initialSummary);
   const [mep, setMep] = useState(initialMep);
   const [pnlHistory, setPnlHistory] = useState(initialPnlHistory);
-  const [totalHistoricallyInvestedARS, setTotalHistoricallyInvestedARS] = useState(initialTotalHistoricallyInvestedARS);
-  const [pnlResetDate, setPnlResetDate] = useState<string | null>(initialPnlResetDate);
+  const [capitalAportado, setCapitalAportado] = useState(initialCapitalAportado);
+  const [capitalMovements, setCapitalMovements] = useState(initialCapitalMovements);
+  const [rentabilidad, setRentabilidad] = useState<number | null>(initialRentabilidad);
   const [loading, setLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showLiquidityModal, setShowLiquidityModal] = useState(false);
+  const [showCapitalModal, setShowCapitalModal] = useState(false);
   const [sellTarget, setSellTarget] = useState<AssetWithPrice | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AssetWithPrice | null>(null);
   const [mepInput, setMepInput] = useState<string>(initialMep?.venta?.toString() ?? "");
@@ -56,8 +60,9 @@ export default function DashboardContent({
       setSummary(data.summary);
       setMep(data.mep);
       setPnlHistory(data.pnlHistory);
-      setTotalHistoricallyInvestedARS(data.totalHistoricallyInvestedARS);
-      setPnlResetDate(data.pnlResetDate);
+      setCapitalAportado(data.capitalAportado);
+      setCapitalMovements(data.capitalMovements);
+      setRentabilidad(data.rentabilidad);
     } catch {
       showToast("Error al actualizar datos", "error");
     } finally {
@@ -97,31 +102,8 @@ export default function DashboardContent({
     }
   }, [refresh]);
 
-  const handleResetInvested = useCallback(async () => {
-    try {
-      const result = await resetHistoricallyInvested();
-      if (result.success) {
-        showToast(result.message, "success");
-        refresh();
-      } else {
-        showToast(result.message, "error");
-      }
-    } catch {
-      showToast("Error al resetear", "error");
-    }
-  }, [refresh]);
-
   const cumulativePnL = pnlHistory.reduce((sum, h) => sum + h.pnlARS, 0);
   const totalPnL = cumulativePnL + summary.totalPnLARS;
-  const pnlReturnPercent = totalHistoricallyInvestedARS > 0
-    ? Math.round((cumulativePnL / totalHistoricallyInvestedARS) * 10000) / 100
-    : null;
-  const totalPnLReturnPercent = totalHistoricallyInvestedARS > 0
-    ? Math.round((totalPnL / totalHistoricallyInvestedARS) * 10000) / 100
-    : null;
-  const pnlDateLabel = pnlResetDate
-    ? `desde ${new Date(pnlResetDate).toLocaleDateString("es-AR")}`
-    : "";
 
   const tabs = [
     { key: "resumen" as const, label: "Resumen" },
@@ -136,6 +118,9 @@ export default function DashboardContent({
           <ThemeToggle />
           <Button variant="outline" size="sm" onClick={() => setShowLiquidityModal(true)}>
             Liquidez
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowCapitalModal(true)}>
+            Capital
           </Button>
           <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 shadow-sm dark:border-slate-700 dark:bg-slate-800">
             <span className="text-xs font-medium text-slate-500 dark:text-slate-400">MEP</span>
@@ -178,26 +163,16 @@ export default function DashboardContent({
 
       {activeTab === "resumen" && (
         <>
-          <DashboardSummary summary={summary} mep={mep} />
+          <DashboardSummary summary={summary} mep={mep} capitalAportado={capitalAportado} rentabilidad={rentabilidad} />
 
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
             <div className="flex items-center gap-8 text-sm flex-wrap">
               <div>
-                <span className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Invertido historicamente</span>
-                <p className="mt-0.5 font-semibold text-slate-900 dark:text-slate-100">{formatARS(totalHistoricallyInvestedARS)}</p>
-              </div>
-              <div className="h-8 w-px bg-slate-200 dark:bg-slate-700" />
-              <div>
-                <span className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">P&L vendidos {pnlDateLabel}</span>
+                <span className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">P&L vendidos</span>
                 <div className="mt-0.5 flex items-baseline gap-2">
                   <span className={`font-semibold ${cumulativePnL >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
                     {formatARS(cumulativePnL)}
                   </span>
-                  {pnlReturnPercent !== null && (
-                    <span className={`text-xs font-medium ${pnlReturnPercent >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                      {pnlReturnPercent >= 0 ? "+" : ""}{pnlReturnPercent.toFixed(2)}%
-                    </span>
-                  )}
                 </div>
               </div>
               <div className="h-8 w-px bg-slate-200 dark:bg-slate-700" />
@@ -207,11 +182,6 @@ export default function DashboardContent({
                   <span className={`font-semibold ${totalPnL >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
                     {formatARS(totalPnL)}
                   </span>
-                  {totalPnLReturnPercent !== null && (
-                    <span className={`text-xs font-medium ${totalPnLReturnPercent >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                      {totalPnLReturnPercent >= 0 ? "+" : ""}{totalPnLReturnPercent.toFixed(2)}%
-                    </span>
-                  )}
                 </div>
               </div>
             </div>
@@ -227,36 +197,19 @@ export default function DashboardContent({
 
       {activeTab === "historial" && (
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-          <div className="mb-5 flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Historial de Operaciones</h2>
-              <div className="mt-1 flex items-center gap-3 text-sm">
-                <span className="text-slate-500 dark:text-slate-400">
-                  P&L vendidos {pnlDateLabel}:
-                </span>
-                <span className={`font-medium ${cumulativePnL >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                  {formatARS(cumulativePnL)}
-                </span>
-                {pnlReturnPercent !== null && (
-                  <span className={`text-xs font-medium ${pnlReturnPercent >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                    ({pnlReturnPercent >= 0 ? "+" : ""}{pnlReturnPercent.toFixed(2)}%)
-                  </span>
-                )}
-                <span className="text-slate-300 dark:text-slate-600">|</span>
-                <span className="text-slate-500 dark:text-slate-400">P&L total:</span>
-                <span className={`font-medium ${totalPnL >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                  {formatARS(totalPnL)}
-                </span>
-                {totalPnLReturnPercent !== null && (
-                  <span className={`text-xs font-medium ${totalPnLReturnPercent >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                    ({totalPnLReturnPercent >= 0 ? "+" : ""}{totalPnLReturnPercent.toFixed(2)}%)
-                  </span>
-                )}
-              </div>
+          <div className="mb-5">
+            <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Historial de Operaciones</h2>
+            <div className="mt-1 flex items-center gap-3 text-sm">
+              <span className="text-slate-500 dark:text-slate-400">P&L vendidos:</span>
+              <span className={`font-medium ${cumulativePnL >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                {formatARS(cumulativePnL)}
+              </span>
+              <span className="text-slate-300 dark:text-slate-600">|</span>
+              <span className="text-slate-500 dark:text-slate-400">P&L total:</span>
+              <span className={`font-medium ${totalPnL >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                {formatARS(totalPnL)}
+              </span>
             </div>
-            <Button variant="outline" size="sm" onClick={handleResetInvested}>
-              Resetear invertido
-            </Button>
           </div>
 
           {pnlHistory.length === 0 ? (
@@ -311,6 +264,46 @@ export default function DashboardContent({
         </div>
       )}
 
+      {activeTab === "historial" && capitalMovements.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <h2 className="mb-4 text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Movimientos de Capital</h2>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
+              <thead>
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Fecha</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Tipo</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Monto</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {capitalMovements.map((m) => (
+                  <tr key={m.id} className="transition-colors duration-150 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                    <td className="px-4 py-3 text-slate-500 text-xs dark:text-slate-400">
+                      {new Date(m.createdAt).toLocaleDateString("es-AR")}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                        m.type === "APORTE"
+                          ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:ring-emerald-800"
+                          : m.type === "CAPITAL_INICIAL"
+                          ? "bg-blue-50 text-blue-700 ring-1 ring-blue-200 dark:bg-blue-900/30 dark:text-blue-400 dark:ring-blue-800"
+                          : "bg-red-50 text-red-700 ring-1 ring-red-200 dark:bg-red-900/30 dark:text-red-400 dark:ring-red-800"
+                      }`}>
+                        {m.type === "APORTE" ? "Aporte" : m.type === "CAPITAL_INICIAL" ? "Capital Inicial" : "Retiro"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right font-medium text-slate-900 dark:text-slate-100">
+                      {m.type !== "RETIRO" ? "+" : "-"}{formatARS(m.amount)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <AddAssetModal
         open={showAddModal}
         onClose={() => setShowAddModal(false)}
@@ -321,6 +314,12 @@ export default function DashboardContent({
         open={showLiquidityModal}
         onClose={() => setShowLiquidityModal(false)}
         currentLiquidity={summary.liquidityARS}
+        onSuccess={refresh}
+      />
+
+      <CapitalMovementModal
+        open={showCapitalModal}
+        onClose={() => setShowCapitalModal(false)}
         onSuccess={refresh}
       />
 

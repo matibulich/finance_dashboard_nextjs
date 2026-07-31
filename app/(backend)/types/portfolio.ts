@@ -63,6 +63,13 @@ export type SearchResult = {
   name: string;
 };
 
+export type CapitalMovementEntry = {
+  id: string;
+  type: "APORTE" | "RETIRO" | "CAPITAL_INICIAL";
+  amount: number;
+  createdAt: string;
+};
+
 export type PnLHistoryEntry = {
   id: string;
   symbol: string;

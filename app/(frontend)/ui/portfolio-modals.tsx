@@ -8,6 +8,7 @@ import {
   sellAsset,
   updateLiquidity,
   clearLiquidity,
+  registerCapitalMovement,
 } from "@/app/(backend)/actions/portfolio";
 import { PortfolioActionState, SearchResult } from "@/app/(backend)/types/portfolio";
 import { showToast } from "@/app/(frontend)/ui/toast";
@@ -491,6 +492,96 @@ export function LiquidityModal({
             </Button>
             <Button type="submit" disabled={pending}>
               {pending ? "Guardando..." : "Guardar"}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+export function CapitalMovementModal({
+  open,
+  onClose,
+  onSuccess,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [movementType, setMovementType] = useState<"APORTE" | "RETIRO" | "CAPITAL_INICIAL">("APORTE");
+
+  const [state, action, pending] = useActionState(
+    async (prev: PortfolioActionState, formData: FormData) => {
+      formData.set("type", movementType);
+      const result = await registerCapitalMovement(prev, formData);
+      if (result.success) {
+        showToast(result.message, "success");
+        onSuccess();
+        onClose();
+      } else {
+        showToast(result.message, "error");
+      }
+      return result;
+    },
+    initialState
+  );
+
+  if (!open) return null;
+
+  return (
+    <div className={modalOverlay}>
+      <div className={modalCardSm}>
+        <button onClick={onClose} className={closeBtn}>
+          <X className="h-4 w-4" />
+        </button>
+        <div className="mb-5 pr-8">
+          <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-100">Movimiento de Capital</h2>
+        </div>
+        <p className="mb-5 text-sm text-slate-600 dark:text-slate-400">
+          Registra un aporte o retiro de capital desde o hacia el exterior de la cartera.
+        </p>
+        <form action={action} className="space-y-4">
+          <div>
+            <label className={labelClass}>Tipo</label>
+            <select
+              value={movementType}
+              onChange={(e) => setMovementType(e.target.value as "APORTE" | "RETIRO" | "CAPITAL_INICIAL")}
+              className={inputClass}
+            >
+              <option value="APORTE">Aporte de Capital</option>
+              <option value="CAPITAL_INICIAL">Capital Inicial</option>
+              <option value="RETIRO">Retiro de Capital</option>
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Monto (ARS)</label>
+            <input
+              name="amount"
+              type="number"
+              required
+              step="0.01"
+              min="0"
+              placeholder="0.00"
+              className={inputClass}
+            />
+            <p className={hintClass}>
+              {movementType === "APORTE"
+                ? "El monto se suma al capital aportado y a la liquidez disponible."
+                : movementType === "CAPITAL_INICIAL"
+                ? "Capital con el que empezaste a invertir. Se suma al capital aportado sin afectar la liquidez."
+                : "El monto se resta del capital aportado y de la liquidez disponible."}
+            </p>
+          </div>
+          {state.message && !state.success && (
+            <p className={errorClass}>{state.message}</p>
+          )}
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" disabled={pending}>
+              {pending ? "Guardando..." : movementType === "APORTE" ? "Aportar" : movementType === "CAPITAL_INICIAL" ? "Guardar" : "Retirar"}
             </Button>
           </div>
         </form>

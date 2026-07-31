@@ -9,6 +9,7 @@ import {
   PortfolioActionState,
   MEPRate,
   PnLHistoryEntry,
+  CapitalMovementEntry,
 } from "@/app/(backend)/types/portfolio";
 import { AssetType } from "@prisma/client";
 import { getCedearRatio } from "@/app/(backend)/lib/cedears";
@@ -336,18 +337,6 @@ export async function addAsset(
           where: { id: userId },
           data: {
             liquidityARS: Math.round((currentLiquidity - costARS) * 100) / 100,
-            totalHistoricallyInvestedARS: {
-              increment: Math.round(costARS * 100) / 100,
-            },
-          },
-        });
-      } else if (costARS > 0) {
-        await tx.user.update({
-          where: { id: userId },
-          data: {
-            totalHistoricallyInvestedARS: {
-              increment: Math.round(costARS * 100) / 100,
-            },
           },
         });
       }
@@ -463,15 +452,8 @@ export async function sellAsset(
     const pnlARS = Math.round((sellPriceARS - buyPriceARS) * quantityToSell * 100) / 100;
     const pnlUSD = Math.round((sellPriceUSD - buyPriceUSD) * quantityToSell * 100) / 100;
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { totalHistoricallyInvestedARS: true },
-    });
-    const totalInvestedARS = Number(user?.totalHistoricallyInvestedARS ?? 0);
     const costOfSold = buyPriceARS * quantityToSell;
-    const pnlPercent = totalInvestedARS > 0
-      ? Math.round((pnlARS / totalInvestedARS) * 10000) / 100
-      : 0;
+    const totalInvestedARS = Math.round(costOfSold * 100) / 100;
 
     const totalSellARS = Math.round(sellPriceARS * quantityToSell * 100) / 100;
 
@@ -567,24 +549,63 @@ export async function getPnLHistory(): Promise<PnLHistoryEntry[]> {
   });
 }
 
-export async function resetHistoricallyInvested(): Promise<PortfolioActionState> {
+export async function registerCapitalMovement(
+  _prevState: PortfolioActionState,
+  formData: FormData
+): Promise<PortfolioActionState> {
   try {
     const userId = await getUserIdFromToken();
     if (!userId) return { success: false, message: "No autenticado" };
 
-    await prisma.user.update({
+    const type = formData.get("type") as string;
+    const amount = parseFloat(formData.get("amount") as string);
+
+    if (!type || !["APORTE", "RETIRO", "CAPITAL_INICIAL"].includes(type)) {
+      return { success: false, message: "Tipo de movimiento inválido" };
+    }
+    if (isNaN(amount) || amount <= 0) {
+      return { success: false, message: "El monto debe ser un número válido mayor a 0" };
+    }
+
+    const user = await prisma.user.findUnique({
       where: { id: userId },
-      data: {
-        totalHistoricallyInvestedARS: 0,
-        pnlResetDate: new Date(),
-      },
+      select: { liquidityARS: true, capitalAportado: true },
+    });
+    const currentLiquidity = Number(user?.liquidityARS ?? 0);
+    const currentCapital = Number(user?.capitalAportado ?? 0);
+
+    if (type === "RETIRO" && amount > currentLiquidity) {
+      return { success: false, message: "No hay suficiente liquidez disponible para este retiro" };
+    }
+
+    const capitalChange = type === "RETIRO" ? -amount : amount;
+    const liquidityChange = type === "APORTE" ? amount : type === "RETIRO" ? -amount : 0;
+
+    await prisma.$transaction(async (tx) => {
+      await tx.capitalMovement.create({
+        data: {
+          userId,
+          type,
+          amount: Math.round(amount * 100) / 100,
+          createdAt: new Date(),
+        },
+      });
+
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          capitalAportado: Math.round((currentCapital + capitalChange) * 100) / 100,
+          ...(type !== "CAPITAL_INICIAL" ? { liquidityARS: Math.round((currentLiquidity + liquidityChange) * 100) / 100 } : {}),
+        },
+      });
     });
 
-    return { success: true, message: "Inversión histórica reseteada" };
+    const labels: Record<string, string> = { APORTE: "Aporte", RETIRO: "Retiro", CAPITAL_INICIAL: "Capital inicial" };
+    return { success: true, message: `${labels[type]} registrado correctamente` };
   } catch (error) {
     return {
       success: false,
-      message: error instanceof Error ? error.message : "Error al resetear",
+      message: error instanceof Error ? error.message : "Error al registrar movimiento de capital",
     };
   }
 }
@@ -594,8 +615,9 @@ export async function getPortfolio(): Promise<{
   summary: PortfolioSummary;
   mep: MEPRate | null;
   pnlHistory: PnLHistoryEntry[];
-  totalHistoricallyInvestedARS: number;
-  pnlResetDate: string | null;
+  capitalAportado: number;
+  capitalMovements: CapitalMovementEntry[];
+  rentabilidad: number | null;
 }> {
   const userId = await getUserIdFromToken();
   if (!userId) {
@@ -608,8 +630,9 @@ export async function getPortfolio(): Promise<{
       },
       mep: null,
       pnlHistory: [],
-      totalHistoricallyInvestedARS: 0,
-      pnlResetDate: null,
+      capitalAportado: 0,
+      capitalMovements: [],
+      rentabilidad: null,
     };
   }
 
@@ -618,15 +641,13 @@ export async function getPortfolio(): Promise<{
     orderBy: { createdAt: "desc" },
   });
 
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { liquidityARS: true, customMEP: true, totalHistoricallyInvestedARS: true, pnlResetDate: true } });
-
-  const pnlResetDate = user?.pnlResetDate ?? null;
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { liquidityARS: true, customMEP: true, capitalAportado: true },
+  });
 
   const pnlHistoryRaw = await prisma.pnLHistory.findMany({
-    where: {
-      userId,
-      ...(pnlResetDate ? { soldAt: { gte: pnlResetDate } } : {}),
-    },
+    where: { userId },
     orderBy: { soldAt: "desc" },
   });
 
@@ -653,6 +674,20 @@ export async function getPortfolio(): Promise<{
 
   if (assets.length === 0) {
     const liquidityARS = Number(user?.liquidityARS ?? 0);
+    const capitalAportado = Number(user?.capitalAportado ?? 0);
+    const capitalMovementsRaw = await prisma.capitalMovement.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+    });
+    const capitalMovements: CapitalMovementEntry[] = capitalMovementsRaw.map((m) => ({
+      id: m.id,
+      type: m.type as "APORTE" | "RETIRO",
+      amount: Number(m.amount),
+      createdAt: m.createdAt.toISOString(),
+    }));
+    const rentabilidad = capitalAportado > 0
+      ? Math.round(((liquidityARS - capitalAportado) / capitalAportado) * 10000) / 100
+      : null;
     return {
       assets: [],
       summary: {
@@ -664,8 +699,9 @@ export async function getPortfolio(): Promise<{
       },
       mep: null,
       pnlHistory,
-      totalHistoricallyInvestedARS: Number(user?.totalHistoricallyInvestedARS ?? 0),
-      pnlResetDate: pnlResetDate?.toISOString() ?? null,
+      capitalAportado,
+      capitalMovements,
+      rentabilidad,
     };
   }
 
@@ -771,6 +807,18 @@ export async function getPortfolio(): Promise<{
     };
   });
 
+  const capitalAportado = Number(user?.capitalAportado ?? 0);
+  const capitalMovementsRaw = await prisma.capitalMovement.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+  });
+  const capitalMovements: CapitalMovementEntry[] = capitalMovementsRaw.map((m) => ({
+    id: m.id,
+    type: m.type as "APORTE" | "RETIRO",
+    amount: Number(m.amount),
+    createdAt: m.createdAt.toISOString(),
+  }));
+
   const liquidityARS = Number(user?.liquidityARS ?? 0);
   const totalInvestedUSD = assetsWithPrice.reduce((sum, a) => sum + a.averagePrice * a.quantity, 0);
   const totalInvestedARS = mepVenta > 0
@@ -791,6 +839,11 @@ export async function getPortfolio(): Promise<{
   const totalBalanceUSD = Math.round((totalValueUSD + (mepVenta > 0 ? liquidityARS / mepVenta : 0)) * 100) / 100;
   const totalBalanceARS = Math.round((totalValueARS + liquidityARS) * 100) / 100;
 
+  const patrimonioActual = totalBalanceARS;
+  const rentabilidad = capitalAportado > 0
+    ? Math.round(((patrimonioActual - capitalAportado) / capitalAportado) * 10000) / 100
+    : null;
+
   return {
     assets: assetsWithPrice,
     summary: {
@@ -806,7 +859,8 @@ export async function getPortfolio(): Promise<{
     },
     mep,
     pnlHistory,
-    totalHistoricallyInvestedARS: Number(user?.totalHistoricallyInvestedARS ?? 0),
-    pnlResetDate: pnlResetDate?.toISOString() ?? null,
+    capitalAportado,
+    capitalMovements,
+    rentabilidad,
   };
 }

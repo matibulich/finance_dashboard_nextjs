@@ -3,7 +3,7 @@ import DashboardContent from "@/app/(frontend)/ui/dashboard-content";
 import { Toast } from "@/app/(frontend)/ui/toast";
 
 export default async function DashboardPage() {
-  const { assets, summary, mep, pnlHistory, totalHistoricallyInvestedARS, pnlResetDate } = await getPortfolio();
+  const { assets, summary, mep, pnlHistory, capitalAportado, capitalMovements, rentabilidad } = await getPortfolio();
 
   return (
     <section className="min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -13,8 +13,9 @@ export default async function DashboardPage() {
           initialSummary={summary}
           initialMep={mep}
           initialPnlHistory={pnlHistory}
-          initialTotalHistoricallyInvestedARS={totalHistoricallyInvestedARS}
-          initialPnlResetDate={pnlResetDate}
+          initialCapitalAportado={capitalAportado}
+          initialCapitalMovements={capitalMovements}
+          initialRentabilidad={rentabilidad}
         />
       </div>
       <Toast />
