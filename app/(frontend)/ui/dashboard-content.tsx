@@ -10,6 +10,7 @@ import { AddAssetModal, SellAssetModal, DeleteConfirmModal, LiquidityModal, Capi
 import { Button } from "@/app/(frontend)/ui/components/button";
 import { showToast } from "@/app/(frontend)/ui/toast";
 import { ThemeToggle } from "@/app/(frontend)/ui/theme-toggle";
+import { Trash2 } from "lucide-react";
 
 function formatARS(n: number) {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2 }).format(n);
@@ -99,6 +100,24 @@ export default function DashboardContent({
       }
     } catch {
       showToast("Error al actualizar MEP", "error");
+    }
+  }, [refresh]);
+
+  const handleDeleteCapitalMovement = useCallback(async (movementId: string) => {
+    if (!window.confirm("¿Seguro que querés eliminar este movimiento de capital?")) return;
+    const formData = new FormData();
+    formData.set("movementId", movementId);
+    try {
+      const { deleteCapitalMovement } = await import("@/app/(backend)/actions/portfolio");
+      const result = await deleteCapitalMovement({ success: true, message: "" }, formData);
+      if (result.success) {
+        showToast(result.message, "success");
+        refresh();
+      } else {
+        showToast(result.message, "error");
+      }
+    } catch {
+      showToast("Error al eliminar el movimiento", "error");
     }
   }, [refresh]);
 
@@ -274,6 +293,7 @@ export default function DashboardContent({
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Fecha</th>
                   <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Tipo</th>
                   <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Monto</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -295,6 +315,16 @@ export default function DashboardContent({
                     </td>
                     <td className="px-4 py-3 text-right font-medium text-slate-900 dark:text-slate-100">
                       {m.type !== "RETIRO" ? "+" : "-"}{formatARS(m.amount)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => handleDeleteCapitalMovement(m.id)}
+                        className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-400 transition-colors duration-200 hover:bg-red-50 hover:text-red-600 dark:text-slate-500 dark:hover:bg-red-900/30 dark:hover:text-red-400"
+                        aria-label="Eliminar movimiento"
+                        title="Eliminar movimiento"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </td>
                   </tr>
                 ))}

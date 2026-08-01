@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useCallback, useMemo, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 
 type Theme = "light" | "dark";
 
@@ -13,26 +13,37 @@ export function useTheme() {
   return useContext(ThemeContext);
 }
 
-function getInitialTheme(): Theme {
-  if (typeof window === "undefined") return "light";
-  const stored = localStorage.getItem("theme") as Theme | null;
+function subscribe(callback: () => void) {
+  window.addEventListener("storage", callback);
+  return () => window.removeEventListener("storage", callback);
+}
+
+function getSnapshot(): Theme {
+  const stored = localStorage.getItem("theme");
   if (stored === "light" || stored === "dark") return stored;
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
+function getServerSnapshot(): Theme {
+  return "light";
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(getInitialTheme);
-  const appliedRef = useRef(false);
+  const theme = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const skipFirstSync = useRef(true);
 
   useEffect(() => {
-    const root = document.documentElement;
-    root.classList.toggle("dark", theme === "dark");
-    localStorage.setItem("theme", theme);
-    appliedRef.current = true;
+    if (skipFirstSync.current) {
+      skipFirstSync.current = false;
+      return;
+    }
+    document.documentElement.classList.toggle("dark", theme === "dark");
   }, [theme]);
 
   const toggle = useCallback(() => {
-    setTheme((prev) => (prev === "light" ? "dark" : "light"));
+    const next = getSnapshot() === "dark" ? "light" : "dark";
+    localStorage.setItem("theme", next);
+    window.dispatchEvent(new Event("storage"));
   }, []);
 
   const value = useMemo(() => ({ theme, toggle }), [theme, toggle]);

@@ -24,15 +24,7 @@ async function fetchDolarRates(): Promise<{ ccl: number | null; mep: number | nu
   }
 }
 
-async function fetchYahooPrice(
-  symbol: string,
-  cclRate: number
-): Promise<{
-  priceUSD: number | null;
-  priceARS: number | null;
-  name: string;
-  changePercent: number;
-} | null> {
+async function fetchYahooPrice(  symbol: string,  cclRate: number): Promise<{  priceUSD: number | null;  priceARS: number | null;  name: string;  changePercent: number;} | null> {
   try {
     const isDotBA = symbol.endsWith(".BA");
     const res = await fetch(

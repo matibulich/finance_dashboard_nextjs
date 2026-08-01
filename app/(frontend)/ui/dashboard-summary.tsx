@@ -31,12 +31,12 @@ export function DashboardSummary({
       <SummaryCard title="Liquidez (ARS)" value={formatARS(summary.liquidityARS)} accent />
       <SummaryCard title="Capital Aportado" value={formatARS(capitalAportado)} accent />
       <SummaryCard
-        title="Rentabilidad"
+        title="Rentabilidad Historica"
         value={rentabilidad !== null ? `${rentabilidad >= 0 ? "+" : ""}${rentabilidad.toFixed(2)}%` : "—"}
         className={rentabilidadColor}
       />
-      <SummaryCard title="P&L (ARS)" value={formatARS(summary.totalPnLARS)} className={pnlColor} />
-      <SummaryCard title="P&L (USD)" value={formatUSD(summary.totalPnLUSD)} className={pnlColor} />
+      <SummaryCard title="P&L de Cartera (ARS)" value={formatARS(summary.totalPnLARS)} className={pnlColor} />
+      <SummaryCard title="P&L de Cartera (USD)" value={formatUSD(summary.totalPnLUSD)} className={pnlColor} />
       {mep && (
         <SummaryCard
           title="Dolar MEP"

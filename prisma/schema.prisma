@@ -29,6 +29,7 @@ model User {
   liquidityARS                 Decimal       @default(0.0) @db.Decimal(18, 2)
   customMEP                    Decimal?      @db.Decimal(18, 2)
   capitalAportado              Decimal       @default(0.0) @db.Decimal(18, 2)
+  totalRetirado                Decimal       @default(0.0) @db.Decimal(18, 2)
   createdAt                    DateTime      @default(now())
 }
 

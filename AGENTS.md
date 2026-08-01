@@ -33,9 +33,9 @@ app/
 │   ├── registro/page.tsx        # (existente)
 │   └── ui/
 │       ├── dashboard-content.tsx # Client component principal
-│       ├── dashboard-summary.tsx # Cards de totales
-│       ├── portfolio-modals.tsx  # AddAsset, SellAsset, DeleteConfirm, LiquidityModal
-│       ├── positions-table.tsx   # Tabla de posiciones (client, TimeElapsed)
+│       ├── dashboard-summary.tsx # Cards de totales (Saldo, Liquidez, Capital Aportado, Rentabilidad, P&L, MEP)
+│       ├── portfolio-modals.tsx  # AddAsset, SellAsset, DeleteConfirm, Liquidity, CapitalMovement
+│       ├── positions-table.tsx   # Tabla de posiciones (client, TimeElapsed, Rent. Anual, columna fija)
 │       ├── theme-provider.tsx    # ThemeProvider (light/dark, localStorage)
 │       ├── theme-toggle.tsx      # ThemeToggle (lucide Moon/Sun)
 │       ├── toast.tsx             # Toast notifications (borde, colores por tipo)
@@ -57,6 +57,8 @@ app/
 5. APIs externas: CoinMarketCap (cripto), Yahoo Finance v8/chart (CEDEARS), DolarApi (MEP)
 6. Borrar liquidez → clearLiquidity() → liquidityARS = 0
 7. MEP manual → setCustomMEP() → sobrescribe MEP de API si se provee
+8. Movimiento de capital → registerCapitalMovement() → APORTE/CAPITAL_INICIAL suman a capitalAportado (histórico, nunca baja); RETIRO suma a totalRetirado y ajusta liquidityARS (no toca capitalAportado); APORTE/RETIRO ajustan liquidityARS
+9. Rentabilidad = ((patrimonioActual + totalRetirado - capitalAportado) / capitalAportado) * 100 → los retiros NO cambian la rentabilidad (capitalAportado es la suma histórica de aportes)
 
 ## PPP (Precio Promedio Ponderado)
 PPP = (qty_actual * ppp_anterior + qty_nueva * precio_nuevo) / qty_total
@@ -173,6 +175,55 @@ PPP = (qty_actual * ppp_anterior + qty_nueva * precio_nuevo) / qty_total
 
 <!-- BEGIN:changelog -->
 # Changelog de Cambios
+
+## 2026-08-01
+
+### 1. Rentabilidad histórica: retiros no la afectan
+- **Schema:** Agregado campo `totalRetirado Decimal(18,2)` al modelo `User`
+- **Archivo:** `app/(backend)/actions/portfolio.ts`
+- **registerCapitalMovement:** RETIRO ya NO resta de `capitalAportado` (ahora es la suma histórica de aportes, nunca baja). RETIRO suma a `totalRetirado` y descuenta `liquidityARS`. APORTE/CAPITAL_INICIAL suman a `capitalAportado` como antes
+- **getPortfolio:** Nueva fórmula `rentabilidad = ((patrimonioActual + totalRetirado - capitalAportado) / capitalAportado) * 100` en ambas rutas (con y sin activos)
+- **Resultado:** Retirar capital no cambia la rentabilidad (se compensa vía `+ totalRetirado`); aportar capital la diluye. `capitalAportado` pasa a ser el capital bruto histórico
+- **Backfill:** Script one-off ejecutado para usuarios existentes: `capitalAportado = neto + retiros` y `totalRetirado = suma de movimientos RETIRO`
+
+### 2. Eliminar movimiento de capital
+- **Archivo:** `app/(backend)/actions/portfolio.ts`
+- **Nuevo:** `deleteCapitalMovement()` → valida pertenencia del movimiento, lo elimina en transacción y recomputa `capitalAportado` y `totalRetirado` como suma de los movimientos restantes (APORTE+CAPITAL_INICIAL y RETIRO respectivamente). La liquidez no se modifica (variable independiente)
+- **Archivo:** `app/(frontend)/ui/dashboard-content.tsx`
+- **Nuevo:** Columna "Acciones" con botón trash (lucide `Trash2`) en la tabla "Movimientos de Capital" del tab Historial. Confirmación con `window.confirm` + toast + refresh
+- **Nota:** El historial es la fuente de verdad: al borrar, los agregados se recalculan desde los movimientos restantes
+
+## 2026-07-30
+
+### 1. Capital Aportado y Rentabilidad (reemplaza "invertido histórico")
+- **Schema:** Agregado modelo `CapitalMovement` y campo `capitalAportado` en `User`. Eliminados `totalHistoricallyInvestedARS` y `pnlResetDate`
+- **Archivo:** `app/(backend)/actions/portfolio.ts`
+- **Nuevo:** `registerCapitalMovement()` → registra APORTE/RETIRO/CAPITAL_INICIAL. APORTE y RETIRO ajustan `capitalAportado` + `liquidityARS`; CAPITAL_INICIAL solo ajusta `capitalAportado`. RETIRO validado contra liquidez disponible
+- **Eliminado:** `resetHistoricallyInvested()` y toda la lógica de `totalHistoricallyInvestedARS`/`pnlResetDate`
+- **getPortfolio:** Devuelve `capitalAportado`, `capitalMovements` y `rentabilidad`
+- **Rentabilidad:** `((patrimonioActual - capitalAportado) / capitalAportado) * 100`, donde patrimonioActual = saldo total ARS (incluye liquidez). Disponible incluso sin activos (usa liquidez)
+- **Archivo:** `app/(frontend)/ui/dashboard-content.tsx`
+- **Nuevo:** Botón "Capital" en el header + `CapitalMovementModal` + tabla "Movimientos de Capital" en tab Historial
+- **Eliminado:** Botón "Resetear invertido histórico" y % de retorno sobre invertido histórico
+- **Archivo:** `app/(frontend)/ui/dashboard-summary.tsx`
+- **Nuevas cards:** "Capital Aportado" y "Rentabilidad" (%)
+- **Archivo:** `app/(backend)/types/portfolio.ts`
+- **Nuevo:** Tipo `CapitalMovementEntry`
+- **Nota:** `pnlHistory` ya no se filtra por `pnlResetDate` (siempre muestra todo el historial)
+
+### 2. sellAsset: P&L por operación individual
+- **Archivo:** `app/(backend)/actions/portfolio.ts`
+- **Cambio:** `totalInvestedARS` de cada venta ahora es `buyPriceARS * quantityToSell` (costo de la posición vendida), no el invertido total del usuario
+- **Resultado:** `pnlPercent` del historial refleja el retorno de esa operación puntual, no del total aportado
+
+## 2026-07-27
+
+### 1. Rentabilidad anualizada por posición
+- **Archivo:** `app/(frontend)/ui/positions-table.tsx`
+- **Nueva columna:** "Rent. Anual" → `((1 + pnlPercentARS/100)^(365/dias) - 1) * 100` (días desde la compra)
+- **Columna fija:** Símbolo con `sticky left-0` para scroll horizontal, con fondo según fila
+- **Filas alternadas:** `bg-slate-50/50` en filas pares
+- **Eliminada:** Columna "Equivalente USD"
 
 ## 2026-07-17
 

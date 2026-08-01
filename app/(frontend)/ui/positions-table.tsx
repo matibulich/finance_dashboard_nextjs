@@ -21,6 +21,12 @@ function formatPercent(n: number) {
   return `${sign}${n.toFixed(2)}%`;
 }
 
+function formatShortDate(dateStr: string) {
+  const [y, m, d] = dateStr.split("-");
+  if (!y || !m || !d) return dateStr;
+  return `${d}/${m}/${y.slice(2)}`;
+}
+
 function daysBetween(dateStr: string) {
   const now = new Date();
   const purchase = new Date(dateStr);
@@ -69,6 +75,8 @@ export function PositionsTable({
     );
   }
 
+  const sortedAssets = [...assets].sort((a, b) => b.pnlPercentARS - a.pnlPercentARS);
+
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
       <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
@@ -80,19 +88,20 @@ export function PositionsTable({
             <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Cantidad</th>
             <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">P. Compra (ARS)</th>
             <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">P. Actual (ARS)</th>
+            <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Var. Diaria</th>
             <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Total (ARS)</th>
             <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Total (USD)</th>
-            <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Tiempo</th>
-            <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Rent. Anual</th>
             <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">P&L (ARS)</th>
             <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">P&L (USD)</th>
             <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">%</th>
+            <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Tiempo</th>
+            <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Rent. Anual</th>
             <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Fecha</th>
             <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Acciones</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-          {assets.map((asset, i) => {
+          {sortedAssets.map((asset, i) => {
             const pnlColor = asset.pnlUSD >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
             const percentColor = asset.pnlPercentARS >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
             const rowBg = i % 2 === 1 ? "bg-slate-50/50 dark:bg-slate-800/30" : "";
@@ -116,24 +125,27 @@ export function PositionsTable({
                 <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-400">
                   {asset.currentPriceARS ? formatARS(asset.currentPriceARS) : "-"}
                 </td>
+                <td className={`px-4 py-3 text-right font-medium ${asset.changePercent >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                  {formatPercent(asset.changePercent)}
+                </td>
                 <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-400">
                   {asset.currentPriceARS ? formatARS(asset.currentPriceARS * asset.quantity) : "-"}
                 </td>
                 <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-400">
                   {formatUSD(asset.currentPriceUSD * asset.quantity)}
                 </td>
-                <td className="px-4 py-3 text-center text-slate-500 dark:text-slate-400 text-xs">
-                  <TimeElapsed purchaseDate={asset.purchaseDate} />
-                </td>
-                <td className={`px-4 py-3 text-right font-medium text-xs ${annualizedColor(asset.pnlPercentARS, asset.purchaseDate)}`}>
-                  {annualizedReturn(asset.pnlPercentARS, asset.purchaseDate)}
-                </td>
                 <td className={`px-4 py-3 text-right font-medium ${pnlColor}`}>{formatARS(asset.pnlARS)}</td>
                 <td className={`px-4 py-3 text-right font-medium ${pnlColor}`}>{formatUSD(asset.pnlUSD)}</td>
                 <td className={`px-4 py-3 text-right font-medium ${percentColor}`}>
                   {formatPercent(asset.pnlPercentARS)}
                 </td>
-                <td className="px-4 py-3 text-center text-slate-500 dark:text-slate-400 text-xs">{asset.purchaseDate}</td>
+                <td className="px-4 py-3 text-center text-slate-500 dark:text-slate-400 text-xs">
+                  <TimeElapsed purchaseDate={asset.purchaseDate} />
+                </td>
+                <td suppressHydrationWarning className={`px-4 py-3 text-right font-medium text-xs ${annualizedColor(asset.pnlPercentARS, asset.purchaseDate)}`}>
+                  {annualizedReturn(asset.pnlPercentARS, asset.purchaseDate)}
+                </td>
+                <td className="px-4 py-3 text-center text-slate-500 dark:text-slate-400 text-xs">{formatShortDate(asset.purchaseDate)}</td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex justify-end gap-1.5">
                     <button
