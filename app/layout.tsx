@@ -3,7 +3,7 @@ import { cn } from "@/app/(backend)/lib/utils";
 import { geist, roboto } from "./(frontend)/ui/fonts";
 import { ThemeProvider } from "./(frontend)/ui/theme-provider";
 import type { Metadata } from "next";
-import PWARegister from "./PWARegister"
+import PWARegister from "./PWARegister";
 
 export const metadata: Metadata = {
   title: "Finance Dashboard",
