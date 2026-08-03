@@ -25,7 +25,7 @@ export function DashboardSummary({
     : "text-red-600 dark:text-red-400";
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+    <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
       <SummaryCard title="Saldo Total (ARS)" value={formatARS(summary.totalBalanceARS)} accent />
       <SummaryCard title="Saldo Total (USD)" value={formatUSD(summary.totalBalanceUSD)} accent />
       <SummaryCard title="Liquidez (ARS)" value={formatARS(summary.liquidityARS)} accent />

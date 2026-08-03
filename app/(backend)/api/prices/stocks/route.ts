@@ -39,11 +39,9 @@ async function fetchYahooPrice(  symbol: string,  cclRate: number): Promise<{  p
     const meta = data?.chart?.result?.[0]?.meta;
     if (!meta) return null;
 
-    const close = data.chart.result[0]?.indicators?.quote?.[0]?.close?.[0];
-    const open = data.chart.result[0]?.indicators?.quote?.[0]?.open?.[0];
-    const changePercent = open && open > 0 ? ((close - open) / open) * 100 : 0;
-
     const yahooPrice = meta.regularMarketPrice;
+    const prevClose = meta.chartPreviousClose;
+    const changePercent = prevClose && prevClose > 0 ? ((yahooPrice - prevClose) / prevClose) * 100 : 0;
 
     if (isDotBA) {
       return {

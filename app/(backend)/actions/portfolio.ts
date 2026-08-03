@@ -94,10 +94,9 @@ async function fetchStockPrices(symbols: string[]): Promise<{
           const data = await res.json();
           const meta = data?.chart?.result?.[0]?.meta;
           if (meta) {
-            const close = data.chart.result[0]?.indicators?.quote?.[0]?.close?.[0];
-            const open = data.chart.result[0]?.indicators?.quote?.[0]?.open?.[0];
-            const changePercent = open && open > 0 ? Math.round(((close - open) / open) * 10000) / 100 : 0;
             const yahooPrice = meta.regularMarketPrice;
+            const prevClose = meta.chartPreviousClose;
+            const changePercent = prevClose && prevClose > 0 ? Math.round(((yahooPrice - prevClose) / prevClose) * 10000) / 100 : 0;
             if (symbol.endsWith(".BA")) {
               return { priceUSD: null, priceARS: yahooPrice, changePercent };
             }
