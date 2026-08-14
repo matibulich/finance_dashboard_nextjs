@@ -737,12 +737,12 @@ function formatPnLHistoryEntry(
   spyVariation?: number | null
 ): PnLHistoryEntry {
   const quantitySold = Number(h.quantitySold);
-  let buyPriceUSD = Number(h.buyPriceUSD);
+  const buyPriceUSD = Number(h.buyPriceUSD);
   let buyPriceARS = Number(h.buyPriceARS);
-  let sellPriceUSD = Number(h.sellPriceUSD);
-  let sellPriceARS = Number(h.sellPriceARS);
+  const sellPriceUSD = Number(h.sellPriceUSD);
+  const sellPriceARS = Number(h.sellPriceARS);
   let pnlARS = Number(h.pnlARS);
-  let pnlUSD = Number(h.pnlUSD);
+  const pnlUSD = Number(h.pnlUSD);
 
   if (buyPriceARS <= 0 && sellPriceARS > 0 && buyPriceUSD > 0 && sellPriceUSD > 0) {
     const impliedCCL = sellPriceARS / sellPriceUSD;
