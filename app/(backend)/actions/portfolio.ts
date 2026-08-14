@@ -437,7 +437,22 @@ export async function sellAsset(
     }
 
     const buyPriceUSD = Number(asset.averagePrice);
-    const buyPriceARS = asset.purchasePriceARS != null ? Number(asset.purchasePriceARS) : 0;
+    let buyPriceARS = asset.purchasePriceARS != null ? Number(asset.purchasePriceARS) : 0;
+    if (buyPriceARS <= 0 && buyPriceUSD > 0) {
+      if (asset.type === AssetType.STOCK) {
+        const { ccl: cclRate } = await fetchDolarRates();
+        const cclVenta = cclRate?.venta ?? 0;
+        if (cclVenta > 0) {
+          buyPriceARS = Math.round(buyPriceUSD * cclVenta * 100) / 100;
+        }
+      } else if (asset.type === AssetType.CRYPTO) {
+        const { mep: mepRate } = await fetchDolarRates();
+        const mepVenta = mepRate?.venta ?? 0;
+        if (mepVenta > 0) {
+          buyPriceARS = Math.round(buyPriceUSD * mepVenta * 100) / 100;
+        }
+      }
+    }
 
     let sellPriceUSD = 0;
     if (asset.type === AssetType.CRYPTO) {
@@ -517,34 +532,326 @@ export async function sellAsset(
   }
 }
 
-export async function getPnLHistory(): Promise<PnLHistoryEntry[]> {
-  const userId = await getUserIdFromToken();
-  if (!userId) return [];
+function resolvePurchaseDate(
+  h: { symbol: string; soldAt: Date; assetId?: string | null },
+  transactions: { symbol: string; createdAt: Date; type: string }[],
+  assets: { id?: string; symbol: string; purchaseDate?: Date | null }[]
+): Date | null {
+  if (h.assetId) {
+    const matchedAsset = assets.find((a) => a.id === h.assetId);
+    if (matchedAsset?.purchaseDate && matchedAsset.purchaseDate <= h.soldAt) {
+      return matchedAsset.purchaseDate;
+    }
+  }
 
-  const history = await prisma.pnLHistory.findMany({
-    where: { userId },
-    orderBy: { soldAt: "desc" },
-  });
+  const txsBeforeSale = transactions.filter(
+    (t) => t.symbol === h.symbol && t.type === "ADD" && t.createdAt <= h.soldAt
+  );
+  if (txsBeforeSale.length > 0) {
+    return txsBeforeSale[0].createdAt;
+  }
 
-  return history.map((h) => {
-    const totalInvested = Number(h.totalInvestedARS);
-    const pnl = Number(h.pnlARS);
+  const symbolAsset = assets.find((a) => a.symbol === h.symbol);
+  if (symbolAsset?.purchaseDate) {
+    return symbolAsset.purchaseDate;
+  }
+
+  const anyTx = transactions.find((t) => t.symbol === h.symbol && t.type === "ADD");
+  if (anyTx) {
+    return anyTx.createdAt;
+  }
+
+  return null;
+}
+
+async function fetchSpyHistoricalPrices(
+  minDate: Date,
+  maxDate: Date
+): Promise<{ timestamp: number; date: string; price: number }[]> {
+  const period1 = Math.floor(minDate.getTime() / 1000) - 86400 * 7;
+  const period2 = Math.floor(maxDate.getTime() / 1000) + 86400 * 3;
+  const headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+  };
+
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(
+        `https://query1.finance.yahoo.com/v8/finance/chart/SPY?period1=${period1}&period2=${period2}&interval=1d`,
+        { headers, next: { revalidate: 3600 } }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const result = data?.chart?.result?.[0];
+        const timestamps = result?.timestamp as number[] | undefined;
+        const quotes = result?.indicators?.quote?.[0]?.close as (number | null)[] | undefined;
+        const adjcloses = result?.indicators?.adjclose?.[0]?.adjclose as (number | null)[] | undefined;
+        if (!timestamps || !quotes) return [];
+
+        const dailyPrices: { timestamp: number; date: string; price: number }[] = [];
+        for (let i = 0; i < timestamps.length; i++) {
+          const t = timestamps[i];
+          const p = quotes[i] ?? adjcloses?.[i];
+          if (t && p !== null && p !== undefined && !isNaN(p) && p > 0) {
+            const dateStr = new Date(t * 1000).toISOString().split("T")[0];
+            dailyPrices.push({ timestamp: t * 1000, date: dateStr, price: p });
+          }
+        }
+        return dailyPrices;
+      }
+      if (res.status === 429) {
+        await new Promise((r) => setTimeout(r, 1000));
+        continue;
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+let cclHistoricalCache: Map<string, number> | null = null;
+
+async function fetchAllCclHistorical(): Promise<Map<string, number>> {
+  if (cclHistoricalCache) return cclHistoricalCache;
+
+  try {
+    const res = await fetch(
+      "https://api.argentinadatos.com/v1/cotizaciones/dolares/contadoconliqui",
+      { next: { revalidate: 86400 } }
+    );
+    if (res.ok) {
+      const data = await res.json();
+      const rates = new Map<string, number>();
+      for (const item of data) {
+        if (item.casa === "contadoconliqui" && item.fecha && item.venta) {
+          rates.set(item.fecha, item.venta);
+        }
+      }
+      cclHistoricalCache = rates;
+      return rates;
+    }
+  } catch {
+    // Fallback to empty map
+  }
+  cclHistoricalCache = new Map();
+  return cclHistoricalCache;
+}
+
+async function fetchCclRatesForDates(
+  dates: Date[]
+): Promise<Map<string, number>> {
+  const allRates = await fetchAllCclHistorical();
+  const uniqueDates = Array.from(
+    new Set(dates.map((d) => d.toISOString().split("T")[0]))
+  );
+  const rates = new Map<string, number>();
+
+  for (const dateStr of uniqueDates) {
+    const rate = allRates.get(dateStr);
+    if (rate !== undefined) {
+      rates.set(dateStr, rate);
+    }
+  }
+
+  return rates;
+}
+
+function findClosestPrice(
+  dailyPrices: { timestamp: number; date: string; price: number }[],
+  targetDate: Date
+): number | null {
+  if (dailyPrices.length === 0) return null;
+  const targetTime = targetDate.getTime();
+  const targetDateStr = targetDate.toISOString().split("T")[0];
+
+  const exact = dailyPrices.find((d) => d.date === targetDateStr);
+  if (exact) return exact.price;
+
+  let closest = dailyPrices[0];
+  let minDiff = Math.abs(dailyPrices[0].timestamp - targetTime);
+
+  for (let i = 1; i < dailyPrices.length; i++) {
+    const diff = Math.abs(dailyPrices[i].timestamp - targetTime);
+    if (diff < minDiff) {
+      minDiff = diff;
+      closest = dailyPrices[i];
+    }
+  }
+
+  if (minDiff > 14 * 24 * 60 * 60 * 1000) return null;
+
+  return closest.price;
+}
+
+function calculateSpyVariation(
+  purchaseDate: Date | null,
+  soldAt: Date,
+  dailyPrices: { timestamp: number; date: string; price: number }[],
+  cclRates: Map<string, number>
+): number | null {
+  if (!purchaseDate || dailyPrices.length === 0) return null;
+
+  const startPrice = findClosestPrice(dailyPrices, purchaseDate);
+  const endPrice = findClosestPrice(dailyPrices, soldAt);
+
+  if (startPrice === null || endPrice === null || startPrice <= 0) return null;
+
+  const startDateStr = purchaseDate.toISOString().split("T")[0];
+  const endDateStr = soldAt.toISOString().split("T")[0];
+
+  const startCcl = cclRates.get(startDateStr);
+  const endCcl = cclRates.get(endDateStr);
+
+  if (startCcl === undefined || endCcl === undefined || startCcl <= 0 || endCcl <= 0) {
+    return null;
+  }
+
+  const startPriceARS = startPrice * startCcl;
+  const endPriceARS = endPrice * endCcl;
+
+  const variation = ((endPriceARS - startPriceARS) / startPriceARS) * 100;
+  return isFinite(variation) ? Math.round(variation * 100) / 100 : null;
+}
+
+function formatPnLHistoryEntry(
+  h: {
+    id: string;
+    symbol: string;
+    name: string;
+    assetType: AssetType;
+    quantitySold: any;
+    buyPriceUSD: any;
+    buyPriceARS: any;
+    sellPriceUSD: any;
+    sellPriceARS: any;
+    pnlARS: any;
+    pnlUSD: any;
+    totalInvestedARS: any;
+    soldAt: Date;
+  },
+  purchaseDate?: Date | null,
+  spyVariation?: number | null
+): PnLHistoryEntry {
+  const quantitySold = Number(h.quantitySold);
+  let buyPriceUSD = Number(h.buyPriceUSD);
+  let buyPriceARS = Number(h.buyPriceARS);
+  let sellPriceUSD = Number(h.sellPriceUSD);
+  let sellPriceARS = Number(h.sellPriceARS);
+  let pnlARS = Number(h.pnlARS);
+  let pnlUSD = Number(h.pnlUSD);
+
+  if (buyPriceARS <= 0 && sellPriceARS > 0 && buyPriceUSD > 0 && sellPriceUSD > 0) {
+    const impliedCCL = sellPriceARS / sellPriceUSD;
+    buyPriceARS = Math.round(buyPriceUSD * impliedCCL * 100) / 100;
+  }
+
+  const totalInvestedARS = buyPriceARS > 0
+    ? Math.round(buyPriceARS * quantitySold * 100) / 100
+    : Number(h.totalInvestedARS);
+
+  if (buyPriceARS > 0 && sellPriceARS > 0) {
+    pnlARS = Math.round((sellPriceARS - buyPriceARS) * quantitySold * 100) / 100;
+  }
+
+  const pnlPercent = buyPriceARS > 0
+    ? Math.round(((sellPriceARS - buyPriceARS) / buyPriceARS) * 10000) / 100
+    : (buyPriceUSD > 0 ? Math.round(((sellPriceUSD - buyPriceUSD) / buyPriceUSD) * 10000) / 100 : 0);
+
+  let daysHeld: number | null = null;
+  let annualizedReturn: number | null = null;
+
+  if (purchaseDate) {
+    const buyTime = new Date(purchaseDate).getTime();
+    const soldTime = new Date(h.soldAt).getTime();
+    const diffDays = Math.floor((soldTime - buyTime) / (1000 * 60 * 60 * 24));
+    daysHeld = Math.max(0, diffDays);
+
+    if (daysHeld > 0) {
+      const totalReturn = pnlPercent / 100;
+      if (1 + totalReturn <= 0) {
+        annualizedReturn = -100;
+      } else {
+        const ann = (Math.pow(1 + totalReturn, 365 / daysHeld) - 1) * 100;
+        annualizedReturn = isFinite(ann) ? Math.round(ann * 100) / 100 : null;
+      }
+    }
+  }
+
+    const alpha = (spyVariation !== null && spyVariation !== undefined)
+      ? Math.round((pnlPercent - spyVariation) * 100) / 100
+      : null;
+
     return {
       id: h.id,
       symbol: h.symbol,
       name: h.name,
       assetType: h.assetType,
-      quantitySold: Number(h.quantitySold),
-      buyPriceUSD: Number(h.buyPriceUSD),
-      buyPriceARS: Number(h.buyPriceARS),
-      sellPriceUSD: Number(h.sellPriceUSD),
-      sellPriceARS: Number(h.sellPriceARS),
-      pnlARS: pnl,
-      pnlUSD: Number(h.pnlUSD),
-      totalInvestedARS: totalInvested,
-      pnlPercent: totalInvested > 0 ? Math.round((pnl / totalInvested) * 10000) / 100 : 0,
+      quantitySold,
+      buyPriceUSD,
+      buyPriceARS,
+      sellPriceUSD,
+      sellPriceARS,
+      pnlARS,
+      pnlUSD,
+      totalInvestedARS,
+      pnlPercent,
       soldAt: h.soldAt.toISOString(),
+      purchaseDate: purchaseDate ? purchaseDate.toISOString().split("T")[0] : null,
+      daysHeld,
+      annualizedReturn,
+      spyVariation: spyVariation ?? null,
+      alpha,
     };
+}
+
+export async function getPnLHistory(): Promise<PnLHistoryEntry[]> {
+  const userId = await getUserIdFromToken();
+  if (!userId) return [];
+
+  const [history, transactions, assets] = await Promise.all([
+    prisma.pnLHistory.findMany({
+      where: { userId },
+      orderBy: { soldAt: "desc" },
+    }),
+    prisma.transaction.findMany({
+      where: { userId, type: "ADD" },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.asset.findMany({
+      where: { userId },
+    }),
+  ]);
+
+  const itemsWithDates = history.map((h) => {
+    const buyDate = resolvePurchaseDate(h, transactions, assets);
+    return { h, buyDate };
+  });
+
+  const validBuyDates = itemsWithDates
+    .map((item) => item.buyDate)
+    .filter((d): d is Date => d !== null);
+
+  let spyPrices: { timestamp: number; date: string; price: number }[] = [];
+  let cclRates = new Map<string, number>();
+  if (validBuyDates.length > 0) {
+    const minDate = new Date(Math.min(...validBuyDates.map((d) => d.getTime())));
+    const maxDate = new Date(Math.max(...itemsWithDates.map((item) => item.h.soldAt.getTime())));
+    spyPrices = await fetchSpyHistoricalPrices(minDate, maxDate);
+
+    const allDates = [
+      ...validBuyDates,
+      ...itemsWithDates.map((item) => item.h.soldAt),
+    ];
+    cclRates = await fetchCclRatesForDates(allDates);
+  }
+
+  return itemsWithDates.map(({ h, buyDate }) => {
+    const spyVariation = calculateSpyVariation(buyDate, h.soldAt, spyPrices, cclRates);
+    return formatPnLHistoryEntry(h, buyDate, spyVariation);
   });
 }
 
@@ -687,40 +994,51 @@ export async function getPortfolio(): Promise<{
     };
   }
 
-  const assets = await prisma.asset.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
+  const [assets, user, pnlHistoryRaw, addTransactions] = await Promise.all([
+    prisma.asset.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.user.findUnique({
+      where: { id: userId },
+      select: { liquidityARS: true, customMEP: true, capitalAportado: true, totalRetirado: true },
+    }),
+    prisma.pnLHistory.findMany({
+      where: { userId },
+      orderBy: { soldAt: "desc" },
+    }),
+    prisma.transaction.findMany({
+      where: { userId, type: "ADD" },
+      orderBy: { createdAt: "asc" },
+    }),
+  ]);
+
+  const itemsWithDates = pnlHistoryRaw.map((h) => {
+    const buyDate = resolvePurchaseDate(h, addTransactions, assets);
+    return { h, buyDate };
   });
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { liquidityARS: true, customMEP: true, capitalAportado: true, totalRetirado: true },
-  });
+  const validBuyDates = itemsWithDates
+    .map((item) => item.buyDate)
+    .filter((d): d is Date => d !== null);
 
-  const pnlHistoryRaw = await prisma.pnLHistory.findMany({
-    where: { userId },
-    orderBy: { soldAt: "desc" },
-  });
+  let spyPrices: { timestamp: number; date: string; price: number }[] = [];
+  let cclRates = new Map<string, number>();
+  if (validBuyDates.length > 0) {
+    const minDate = new Date(Math.min(...validBuyDates.map((d) => d.getTime())));
+    const maxDate = new Date(Math.max(...itemsWithDates.map((item) => item.h.soldAt.getTime())));
+    spyPrices = await fetchSpyHistoricalPrices(minDate, maxDate);
 
-  const pnlHistory: PnLHistoryEntry[] = pnlHistoryRaw.map((h) => {
-    const totalInvested = Number(h.totalInvestedARS);
-    const pnl = Number(h.pnlARS);
-    return {
-      id: h.id,
-      symbol: h.symbol,
-      name: h.name,
-      assetType: h.assetType,
-      quantitySold: Number(h.quantitySold),
-      buyPriceUSD: Number(h.buyPriceUSD),
-      buyPriceARS: Number(h.buyPriceARS),
-      sellPriceUSD: Number(h.sellPriceUSD),
-      sellPriceARS: Number(h.sellPriceARS),
-      pnlARS: pnl,
-      pnlUSD: Number(h.pnlUSD),
-      totalInvestedARS: totalInvested,
-      pnlPercent: totalInvested > 0 ? Math.round((pnl / totalInvested) * 10000) / 100 : 0,
-      soldAt: h.soldAt.toISOString(),
-    };
+    const allDates = [
+      ...validBuyDates,
+      ...itemsWithDates.map((item) => item.h.soldAt),
+    ];
+    cclRates = await fetchCclRatesForDates(allDates);
+  }
+
+  const pnlHistory: PnLHistoryEntry[] = itemsWithDates.map(({ h, buyDate }) => {
+    const spyVariation = calculateSpyVariation(buyDate, h.soldAt, spyPrices, cclRates);
+    return formatPnLHistoryEntry(h, buyDate, spyVariation);
   });
 
   if (assets.length === 0) {
@@ -807,13 +1125,13 @@ export async function getPortfolio(): Promise<{
         if (a.symbol.endsWith(".BA") && stockPrice.priceARS !== null) {
           currentPriceARS = stockPrice.priceARS;
           currentPriceUSD = cclForCedears > 0 ? Math.round((stockPrice.priceARS / cclForCedears) * 100) / 100 : 0;
-          purchasePriceARS = dbPurchasePriceARS ?? (ratio ? Math.round((avgPrice / ratio.num) * cclForCedears * 100) / 100 : null);
+          purchasePriceARS = dbPurchasePriceARS ?? (cclForCedears > 0 ? Math.round(avgPrice * cclForCedears * 100) / 100 : null);
         } else if (stockPrice.priceUSD !== null) {
           if (ratio) {
             currentPriceUSD = Math.round((stockPrice.priceUSD / ratio.num) * 100) / 100;
             if (mepVenta > 0) {
               currentPriceARS = Math.round(currentPriceUSD * cclForCedears * 100) / 100;
-              purchasePriceARS = dbPurchasePriceARS ?? Math.round((avgPrice / ratio.num) * cclForCedears * 100) / 100;
+              purchasePriceARS = dbPurchasePriceARS ?? (cclForCedears > 0 ? Math.round(avgPrice * cclForCedears * 100) / 100 : null);
             }
           } else {
             currentPriceUSD = stockPrice.priceUSD;
@@ -826,7 +1144,7 @@ export async function getPortfolio(): Promise<{
         if (cclForCedears > 0) {
           currentPriceARS = Math.round(currentPriceUSD * cclForCedears * 100) / 100;
         }
-        purchasePriceARS = dbPurchasePriceARS ?? Math.round((avgPrice / ratio.num) * cclForCedears * 100) / 100;
+        purchasePriceARS = dbPurchasePriceARS ?? (cclForCedears > 0 ? Math.round(avgPrice * cclForCedears * 100) / 100 : null);
       }
     }
 

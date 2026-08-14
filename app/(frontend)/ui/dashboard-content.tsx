@@ -247,11 +247,24 @@ export default function DashboardContent({
                     <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">P&L (ARS)</th>
                     <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">P&L (USD)</th>
                     <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">% P&L</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Var. SPY</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Alpha</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Tiempo</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Rent. Anual</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {pnlHistory.map((h) => {
                     const pnlColor = h.pnlARS >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
+                    const annColor = h.annualizedReturn !== null && h.annualizedReturn !== undefined
+                      ? (h.annualizedReturn >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")
+                      : "text-slate-400 dark:text-slate-500";
+                    const spyColor = h.spyVariation !== null && h.spyVariation !== undefined
+                      ? (h.spyVariation >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")
+                      : "text-slate-400 dark:text-slate-500";
+                    const alphaColor = h.alpha !== null && h.alpha !== undefined
+                      ? (h.alpha >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400")
+                      : "text-slate-400 dark:text-slate-500";
                     return (
                       <tr key={h.id} className="transition-colors duration-150 hover:bg-slate-50 dark:hover:bg-slate-800/50">
                         <td className="px-4 py-3 text-slate-500 text-xs dark:text-slate-400">{new Date(h.soldAt).toLocaleDateString("es-AR")}</td>
@@ -272,6 +285,24 @@ export default function DashboardContent({
                         <td className={`px-4 py-3 text-right font-medium ${pnlColor}`}>{formatUSD(h.pnlUSD)}</td>
                         <td className={`px-4 py-3 text-right font-medium ${pnlColor}`}>
                           {h.pnlPercent >= 0 ? "+" : ""}{h.pnlPercent.toFixed(2)}%
+                        </td>
+                        <td className={`px-4 py-3 text-right font-medium text-xs ${spyColor}`}>
+                          {h.spyVariation !== null && h.spyVariation !== undefined
+                            ? `${h.spyVariation >= 0 ? "+" : ""}${h.spyVariation.toFixed(2)}%`
+                            : "—"}
+                        </td>
+                        <td className={`px-4 py-3 text-right font-medium text-xs ${alphaColor}`}>
+                          {h.alpha !== null && h.alpha !== undefined
+                            ? `${h.alpha >= 0 ? "+" : ""}${h.alpha.toFixed(2)}%`
+                            : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-center text-slate-500 dark:text-slate-400 text-xs">
+                          {h.daysHeld !== null && h.daysHeld !== undefined ? `${h.daysHeld} dias` : "—"}
+                        </td>
+                        <td className={`px-4 py-3 text-right font-medium text-xs ${annColor}`}>
+                          {h.annualizedReturn !== null && h.annualizedReturn !== undefined
+                            ? `${h.annualizedReturn >= 0 ? "+" : ""}${h.annualizedReturn.toFixed(2)}%`
+                            : "—"}
                         </td>
                       </tr>
                     );

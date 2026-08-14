@@ -85,4 +85,9 @@ export type PnLHistoryEntry = {
   totalInvestedARS: number;
   pnlPercent: number;
   soldAt: string;
+  purchaseDate?: string | null;
+  daysHeld?: number | null;
+  annualizedReturn?: number | null;
+  spyVariation?: number | null;
+  alpha?: number | null;
 };

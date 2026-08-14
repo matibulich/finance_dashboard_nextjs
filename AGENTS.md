@@ -170,11 +170,61 @@ PPP = (qty_actual * ppp_anterior + qty_nueva * precio_nuevo) / qty_total
 - CEDEAR_ARS = CEDEAR_USD * CCL_venta
 - P&L USD = (currentPriceUSD - averagePrice) * quantity
 - P&L ARS = (currentPriceARS - purchasePriceARS) * quantity
-- purchasePriceARS = (averagePrice / ratio_num) * CCL
+- purchasePriceARS = averagePrice * CCL  (since averagePrice is already stored in CEDEAR USD)
 <!-- END:cedear-rules -->
 
 <!-- BEGIN:changelog -->
 # Changelog de Cambios
+
+## 2026-08-14
+
+### 1. Fix: Variación SPY en pesos (ARS) usando CCL histórico
+- **Archivo:** `app/(backend)/actions/portfolio.ts`
+- **Causa:** `calculateSpyVariation()` calculaba la variación solo en USD (SPY price change), no en ARS. Faltaba factorizar el cambio en el CCL (dólar contado con liquidación) entre la fecha de compra y venta.
+- **Solución:**
+  1. Nuevo endpoint: `fetchAllCclHistorical()` usa `https://api.argentinadatos.com/v1/cotizaciones/dolares/contadoconliqui` para obtener todo el histórico de CCL (cacheado 24h).
+  2. `fetchCclRatesForDates()` filtra las fechas necesarias del dataset completo.
+  3. `calculateSpyVariation()` ahora recibe `cclRates: Map<string, number>` y calcula:
+     - `startPriceARS = SPY_USD_start * CCL_start`
+     - `endPriceARS = SPY_USD_end * CCL_end`
+     - `variation = ((endPriceARS - startPriceARS) / startPriceARS) * 100`
+  4. Actualizados ambos puntos de llamada: `getPnLHistory()` y `getPortfolio()`.
+- **Resultado:** La columna "Var. SPY" ahora muestra la variación real en pesos (ej: ~5% en lugar de 2.75%), incluyendo tanto el movimiento de SPY como la devaluación del peso via CCL.
+
+## 2026-08-13
+
+### 1. Fix: P&L % en historial para CEDEARs (QCOM, MCD, etc.) y corrección de totalInvestedARS histórico
+- **Archivo:** `app/(backend)/actions/portfolio.ts`
+- **Causa del bug:**
+  1. La fórmula de fallback para `purchasePriceARS` en `getPortfolio()` dividía `averagePrice` por `ratio.num`. Dado que `averagePrice` ya está almacenado en DB como **CEDEAR USD** (no underlying USD), dividirlo por `ratio.num` (ej. 11 para QCOM, 24 para MCD) hacía que el precio de compra en pesos fuese 11 o 24 veces menor al real.
+  2. En operaciones históricas de venta guardadas antes del rediseño de julio 2026, el campo `totalInvestedARS` de la fila en DB guardaba el capital total aportado por el usuario (ej: $1.530.000,00) en lugar del costo de la posición vendida (ej: 3 x $25.860 = $77.580,00). Por eso, al calcular `pnlARS / totalInvestedARS` (-$4.590 / $1.530.000), el resultado daba **-0.30%** en lugar del **-5.92%** real de la operación.
+- **Solución:**
+  1. Se eliminó la división por `ratio.num` en el fallback de `purchasePriceARS` (`purchasePriceARS = avgPrice * cclForCedears`).
+  2. Se actualizó `formatPnLHistoryEntry()` para calcular el costo de la posición vendida como `buyPriceARS * quantitySold` y determinar el porcentaje de retorno puntual de la operación directamente con `((sellPriceARS - buyPriceARS) / buyPriceARS) * 100`.
+- **Archivo:** `AGENTS.md`
+- **Solución:** Se corrigió la fórmula errónea `purchasePriceARS = (averagePrice / ratio_num) * CCL` en la sección CEDEAR Rules por `purchasePriceARS = averagePrice * CCL`.
+
+### 2. Días en cartera y Rentabilidad Anualizada en Historial de Operaciones
+- **Archivos:** `app/(backend)/types/portfolio.ts`, `app/(backend)/actions/portfolio.ts`, `app/(frontend)/ui/dashboard-content.tsx`
+- **Cambio:**
+  1. Se agregaron `purchaseDate`, `daysHeld` y `annualizedReturn` al tipo `PnLHistoryEntry`.
+  2. En `portfolio.ts`, se implementó `resolvePurchaseDate()` para determinar la fecha de compra del activo vendido a partir de las transacciones de compra (`type: ADD`) y activos del usuario.
+  3. `formatPnLHistoryEntry()` calcula `daysHeld = Math.max(0, floor((soldAt - purchaseDate) / 1 día))` y la rentabilidad anualizada `((1 + pnlPercent/100)^(365/daysHeld) - 1) * 100`.
+  4. En `dashboard-content.tsx`, se agregaron las columnas "Tiempo" (días en cartera) y "Rent. Anual" (% anualizado coloreado verde/rojo) en la tabla "Historial de Operaciones", manteniendo la misma estética y consistencia que la tabla de posiciones activas.
+
+### 3. Porcentaje de variación del SPY en Historial de Operaciones
+- **Archivos:** `app/(backend)/types/portfolio.ts`, `app/(backend)/actions/portfolio.ts`, `app/(frontend)/ui/dashboard-content.tsx`
+- **Cambio:**
+  1. Se agregó el campo `spyVariation?: number | null` al tipo `PnLHistoryEntry`.
+  2. En `portfolio.ts`, se implementaron `fetchSpyHistoricalPrices()`, `findClosestPrice()` y `calculateSpyVariation()` usando Yahoo Finance chart API y el ratio de `cedears.json` (`60:1` para SPY) para calcular el retorno exacto que tuvo el SPY en el mismo período (`purchaseDate` a `soldAt`).
+  3. En `dashboard-content.tsx`, se agregó la columna "Var. SPY" en la tabla "Historial de Operaciones", mostrando el porcentaje comparativo contra el benchmark (coloreado en verde/rojo).
+
+### 4. Variación Alpha (vs SPY) en Historial de Operaciones
+- **Archivos:** `app/(backend)/types/portfolio.ts`, `app/(backend)/actions/portfolio.ts`, `app/(frontend)/ui/dashboard-content.tsx`
+- **Cambio:**
+  1. Se agregó el campo `alpha?: number | null` al tipo `PnLHistoryEntry`.
+  2. En `portfolio.ts`, `formatPnLHistoryEntry()` calcula `alpha = pnlPercent - spyVariation` (exceso de rendimiento del activo sobre el SPY en el mismo período).
+  3. En `dashboard-content.tsx`, se agregó la columna "Alpha" en la tabla "Historial de Operaciones", mostrando el diferencial de rendimiento respecto al benchmark coloreado en verde (outperformance) o rojo (underperformance).
 
 ## 2026-08-01
 
