@@ -628,7 +628,16 @@ async function fetchAllCclHistorical(): Promise<Map<string, number>> {
       const rates = new Map<string, number>();
       for (const item of data) {
         if (item.casa === "contadoconliqui" && item.fecha && item.venta) {
-          rates.set(item.fecha, item.venta);
+          // Normalize date to YYYY-MM-DD format
+          let fecha = item.fecha;
+          if (fecha.includes("/")) {
+            // Convert DD/MM/YYYY to YYYY-MM-DD
+            const parts = fecha.split("/");
+            if (parts.length === 3) {
+              fecha = `${parts[2]}-${parts[1].padStart(2, "0")}-${parts[0].padStart(2, "0")}`;
+            }
+          }
+          rates.set(fecha, item.venta);
         }
       }
       cclHistoricalCache = rates;
@@ -650,10 +659,29 @@ async function fetchCclRatesForDates(
   );
   const rates = new Map<string, number>();
 
+  const sortedRateDates = Array.from(allRates.keys()).sort();
+
   for (const dateStr of uniqueDates) {
-    const rate = allRates.get(dateStr);
+    let rate = allRates.get(dateStr);
     if (rate !== undefined) {
       rates.set(dateStr, rate);
+    } else if (sortedRateDates.length > 0) {
+      // Find closest available date
+      const targetTime = new Date(dateStr).getTime();
+      let closest = sortedRateDates[0];
+      let minDiff = Math.abs(new Date(sortedRateDates[0]).getTime() - targetTime);
+
+      for (const d of sortedRateDates) {
+        const diff = Math.abs(new Date(d).getTime() - targetTime);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closest = d;
+        }
+      }
+      // Only use if within 7 days
+      if (minDiff <= 7 * 24 * 60 * 60 * 1000) {
+        rates.set(dateStr, allRates.get(closest)!);
+      }
     }
   }
 
@@ -715,6 +743,91 @@ function calculateSpyVariation(
 
   const variation = ((endPriceARS - startPriceARS) / startPriceARS) * 100;
   return isFinite(variation) ? Math.round(variation * 100) / 100 : null;
+}
+
+async function calculatePortfolioAlpha(
+  capitalMovements: { type: string; amount: number; createdAt: Date }[],
+  currentPortfolioValueARS: number,
+  userId: string
+): Promise<{ alphaCartera: number | null; spyEquivalenteCartera: number | null }> {
+  try {
+    const movements = capitalMovements
+      .filter((m) => ["APORTE", "CAPITAL_INICIAL", "RETIRO"].includes(m.type))
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
+    if (movements.length === 0) {
+      return { alphaCartera: null, spyEquivalenteCartera: null };
+    }
+
+    const firstDate = movements[0].createdAt;
+    const now = new Date();
+
+    const spyPrices = await fetchSpyHistoricalPrices(firstDate, now);
+    if (spyPrices.length === 0) {
+      return { alphaCartera: null, spyEquivalenteCartera: null };
+    }
+
+    const allDates = [...movements.map((m) => m.createdAt), now];
+    const cclRates = await fetchCclRatesForDates(allDates);
+
+    let portfolioTWR = 1;
+    let spyTWR = 1;
+    let prevDate = firstDate;
+    let portfolioValue = movements[0].type === "RETIRO" ? -movements[0].amount : movements[0].amount;
+
+    for (let i = 1; i <= movements.length; i++) {
+      const currentDate = i < movements.length ? movements[i].createdAt : now;
+
+      if (currentDate.getTime() > prevDate.getTime()) {
+        const spyStart = findClosestPrice(spyPrices, prevDate);
+        const spyEnd = findClosestPrice(spyPrices, currentDate);
+
+        if (spyStart !== null && spyEnd !== null && spyStart > 0) {
+          const startDateStr = prevDate.toISOString().split("T")[0];
+          const endDateStr = currentDate.toISOString().split("T")[0];
+          const startCcl = cclRates.get(startDateStr);
+          const endCcl = cclRates.get(endDateStr);
+
+          if (startCcl !== undefined && endCcl !== undefined && startCcl > 0 && endCcl > 0) {
+            const spyStartARS = spyStart * startCcl;
+            const spyEndARS = spyEnd * endCcl;
+            const spyPeriodReturn = (spyEndARS - spyStartARS) / spyStartARS;
+
+            const portfolioStartValue = portfolioValue;
+            const netFlow = i < movements.length
+              ? (movements[i].type === "RETIRO" ? -movements[i].amount : movements[i].amount)
+              : 0;
+            const portfolioEndValue = i < movements.length
+              ? portfolioStartValue + netFlow
+              : currentPortfolioValueARS;
+
+            let portfolioPeriodReturn = 0;
+            if (portfolioStartValue > 0) {
+              portfolioPeriodReturn = (portfolioEndValue - portfolioStartValue - netFlow) / portfolioStartValue;
+            }
+
+            portfolioTWR *= 1 + portfolioPeriodReturn;
+            spyTWR *= 1 + spyPeriodReturn;
+
+            portfolioValue = portfolioEndValue;
+          }
+        }
+      }
+
+      prevDate = currentDate;
+    }
+
+    const portfolioReturnPct = (portfolioTWR - 1) * 100;
+    const spyReturnPct = (spyTWR - 1) * 100;
+    const alpha = portfolioReturnPct - spyReturnPct;
+
+    return {
+      alphaCartera: isFinite(alpha) ? Math.round(alpha * 100) / 100 : null,
+      spyEquivalenteCartera: isFinite(spyReturnPct) ? Math.round(spyReturnPct * 100) / 100 : null,
+    };
+  } catch {
+    return { alphaCartera: null, spyEquivalenteCartera: null };
+  }
 }
 
 function formatPnLHistoryEntry(
@@ -976,6 +1089,8 @@ export async function getPortfolio(): Promise<{
   capitalAportado: number;
   capitalMovements: CapitalMovementEntry[];
   rentabilidad: number | null;
+  alphaCartera: number | null;
+  spyEquivalenteCartera: number | null;
 }> {
   const userId = await getUserIdFromToken();
   if (!userId) {
@@ -991,6 +1106,8 @@ export async function getPortfolio(): Promise<{
       capitalAportado: 0,
       capitalMovements: [],
       rentabilidad: null,
+      alphaCartera: null,
+      spyEquivalenteCartera: null,
     };
   }
 
@@ -1072,6 +1189,8 @@ export async function getPortfolio(): Promise<{
       capitalAportado,
       capitalMovements,
       rentabilidad,
+      alphaCartera: null,
+      spyEquivalenteCartera: null,
     };
   }
 
@@ -1125,13 +1244,13 @@ export async function getPortfolio(): Promise<{
         if (a.symbol.endsWith(".BA") && stockPrice.priceARS !== null) {
           currentPriceARS = stockPrice.priceARS;
           currentPriceUSD = cclForCedears > 0 ? Math.round((stockPrice.priceARS / cclForCedears) * 100) / 100 : 0;
-          purchasePriceARS = dbPurchasePriceARS ?? (cclForCedears > 0 ? Math.round(avgPrice * cclForCedears * 100) / 100 : null);
+          purchasePriceARS = dbPurchasePriceARS;
         } else if (stockPrice.priceUSD !== null) {
           if (ratio) {
             currentPriceUSD = Math.round((stockPrice.priceUSD / ratio.num) * 100) / 100;
             if (mepVenta > 0) {
               currentPriceARS = Math.round(currentPriceUSD * cclForCedears * 100) / 100;
-              purchasePriceARS = dbPurchasePriceARS ?? (cclForCedears > 0 ? Math.round(avgPrice * cclForCedears * 100) / 100 : null);
+              purchasePriceARS = dbPurchasePriceARS;
             }
           } else {
             currentPriceUSD = stockPrice.priceUSD;
@@ -1144,7 +1263,7 @@ export async function getPortfolio(): Promise<{
         if (cclForCedears > 0) {
           currentPriceARS = Math.round(currentPriceUSD * cclForCedears * 100) / 100;
         }
-        purchasePriceARS = dbPurchasePriceARS ?? (cclForCedears > 0 ? Math.round(avgPrice * cclForCedears * 100) / 100 : null);
+        purchasePriceARS = dbPurchasePriceARS;
       }
     }
 
@@ -1215,6 +1334,18 @@ export async function getPortfolio(): Promise<{
     ? Math.round(((patrimonioActual + totalRetirado - capitalAportado) / capitalAportado) * 10000) / 100
     : null;
 
+  const movementsForAlpha = capitalMovementsRaw.map((m) => ({
+    type: m.type,
+    amount: Number(m.amount),
+    createdAt: m.createdAt,
+  }));
+
+  const { alphaCartera, spyEquivalenteCartera } = await calculatePortfolioAlpha(
+    movementsForAlpha,
+    patrimonioActual,
+    userId
+  );
+
   return {
     assets: assetsWithPrice,
     summary: {
@@ -1233,5 +1364,7 @@ export async function getPortfolio(): Promise<{
     capitalAportado,
     capitalMovements,
     rentabilidad,
+    alphaCartera,
+    spyEquivalenteCartera,
   };
 }

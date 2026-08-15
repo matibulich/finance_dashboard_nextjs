@@ -3,7 +3,7 @@ import DashboardContent from "@/app/(frontend)/ui/dashboard-content";
 import { Toast } from "@/app/(frontend)/ui/toast";
 
 export default async function DashboardPage() {
-  const { assets, summary, mep, pnlHistory, capitalAportado, capitalMovements, rentabilidad } = await getPortfolio();
+  const { assets, summary, mep, pnlHistory, capitalAportado, capitalMovements, rentabilidad, alphaCartera, spyEquivalenteCartera } = await getPortfolio();
 
   return (
     <section className="min-h-screen bg-slate-50 dark:bg-slate-950">
@@ -16,6 +16,8 @@ export default async function DashboardPage() {
           initialCapitalAportado={capitalAportado}
           initialCapitalMovements={capitalMovements}
           initialRentabilidad={rentabilidad}
+          initialAlphaCartera={alphaCartera}
+          initialSpyEquivalenteCartera={spyEquivalenteCartera}
         />
       </div>
       <Toast />

@@ -13,30 +13,54 @@ export function DashboardSummary({
   mep,
   capitalAportado,
   rentabilidad,
+  portfolioReturnPct,
+  alphaAcumulado,
+  spyEquivalente,
 }: {
   summary: PortfolioSummary;
   mep: MEPRate | null;
   capitalAportado: number;
   rentabilidad: number | null;
+  portfolioReturnPct: number;
+  alphaAcumulado: number;
+  spyEquivalente: number;
 }) {
   const pnlColor = summary.totalPnLUSD >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
   const rentabilidadColor = rentabilidad !== null && rentabilidad >= 0
     ? "text-emerald-600 dark:text-emerald-400"
     : "text-red-600 dark:text-red-400";
+  const portfolioReturnColor = portfolioReturnPct >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
+  const alphaColor = alphaAcumulado >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
+  const spyColor = spyEquivalente >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400";
 
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
+    <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-7">
       <SummaryCard title="Saldo Total (ARS)" value={formatARS(summary.totalBalanceARS)} accent />
       <SummaryCard title="Saldo Total (USD)" value={formatUSD(summary.totalBalanceUSD)} accent />
       <SummaryCard title="Liquidez (ARS)" value={formatARS(summary.liquidityARS)} accent />
       <SummaryCard title="Capital Aportado" value={formatARS(capitalAportado)} accent />
       <SummaryCard
-        title="Rentabilidad Historica"
+        title="Rentabilidad Histórica"
         value={rentabilidad !== null ? `${rentabilidad >= 0 ? "+" : ""}${rentabilidad.toFixed(2)}%` : "—"}
         className={rentabilidadColor}
       />
-      <SummaryCard title="P&L de Cartera (ARS)" value={formatARS(summary.totalPnLARS)} className={pnlColor} />
-      <SummaryCard title="P&L de Cartera (USD)" value={formatUSD(summary.totalPnLUSD)} className={pnlColor} />
+      <SummaryCard
+        title="Rent. Cartera"
+        value={`${portfolioReturnPct >= 0 ? "+" : ""}${portfolioReturnPct.toFixed(2)}%`}
+        className={portfolioReturnColor}
+      />
+      <SummaryCard
+        title="Alpha Acumulado"
+        value={`${alphaAcumulado >= 0 ? "+" : ""}${alphaAcumulado.toFixed(2)}%`}
+        className={alphaColor}
+      />
+      <SummaryCard
+        title="SPY Equivalente"
+        value={`${spyEquivalente >= 0 ? "+" : ""}${spyEquivalente.toFixed(2)}%`}
+        className={spyColor}
+      />
+      <SummaryCard title="P&L Cartera (ARS)" value={formatARS(summary.totalPnLARS)} className={pnlColor} />
+      <SummaryCard title="P&L Cartera (USD)" value={formatUSD(summary.totalPnLUSD)} className={pnlColor} />
       {mep && (
         <SummaryCard
           title="Dolar MEP"

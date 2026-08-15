@@ -10,14 +10,11 @@ import { AddAssetModal, SellAssetModal, DeleteConfirmModal, LiquidityModal, Capi
 import { Button } from "@/app/(frontend)/ui/components/button";
 import { showToast } from "@/app/(frontend)/ui/toast";
 import { ThemeToggle } from "@/app/(frontend)/ui/theme-toggle";
+import { PnLChart } from "@/app/(frontend)/ui/pnl-chart";
 import { Trash2 } from "lucide-react";
 
 function formatARS(n: number) {
   return new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", minimumFractionDigits: 2 }).format(n);
-}
-
-function formatUSD(n: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(n);
 }
 
 export default function DashboardContent({
@@ -28,6 +25,8 @@ export default function DashboardContent({
   initialCapitalAportado,
   initialCapitalMovements,
   initialRentabilidad,
+  initialAlphaCartera,
+  initialSpyEquivalenteCartera,
 }: {
   initialAssets: AssetWithPrice[];
   initialSummary: PortfolioSummary;
@@ -36,6 +35,8 @@ export default function DashboardContent({
   initialCapitalAportado: number;
   initialCapitalMovements: CapitalMovementEntry[];
   initialRentabilidad: number | null;
+  initialAlphaCartera: number | null;
+  initialSpyEquivalenteCartera: number | null;
 }) {
   const [assets, setAssets] = useState(initialAssets);
   const [summary, setSummary] = useState(initialSummary);
@@ -44,6 +45,8 @@ export default function DashboardContent({
   const [capitalAportado, setCapitalAportado] = useState(initialCapitalAportado);
   const [capitalMovements, setCapitalMovements] = useState(initialCapitalMovements);
   const [rentabilidad, setRentabilidad] = useState<number | null>(initialRentabilidad);
+  const [alphaCartera, setAlphaCartera] = useState<number | null>(initialAlphaCartera);
+  const [spyEquivalenteCartera, setSpyEquivalenteCartera] = useState<number | null>(initialSpyEquivalenteCartera);
   const [loading, setLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showLiquidityModal, setShowLiquidityModal] = useState(false);
@@ -64,6 +67,8 @@ export default function DashboardContent({
       setCapitalAportado(data.capitalAportado);
       setCapitalMovements(data.capitalMovements);
       setRentabilidad(data.rentabilidad);
+      setAlphaCartera(data.alphaCartera);
+      setSpyEquivalenteCartera(data.spyEquivalenteCartera);
     } catch {
       showToast("Error al actualizar datos", "error");
     } finally {
@@ -123,6 +128,15 @@ export default function DashboardContent({
 
   const cumulativePnL = pnlHistory.reduce((sum, h) => sum + h.pnlARS, 0);
   const totalPnL = cumulativePnL + summary.totalPnLARS;
+  const totalCapitalOperado = pnlHistory.reduce((sum, h) => sum + h.totalInvestedARS, 0);
+  const pnlPercentAcumulado = totalCapitalOperado > 0
+    ? (cumulativePnL / totalCapitalOperado) * 100
+    : 0;
+
+  const portfolioInvestedARS = summary.totalInvestedARS;
+  const portfolioReturnPct = portfolioInvestedARS > 0
+    ? (summary.totalPnLARS / portfolioInvestedARS) * 100
+    : 0;
 
   const tabs = [
     { key: "resumen" as const, label: "Resumen" },
@@ -182,7 +196,15 @@ export default function DashboardContent({
 
       {activeTab === "resumen" && (
         <>
-          <DashboardSummary summary={summary} mep={mep} capitalAportado={capitalAportado} rentabilidad={rentabilidad} />
+          <DashboardSummary
+            summary={summary}
+            mep={mep}
+            capitalAportado={capitalAportado}
+            rentabilidad={rentabilidad}
+            portfolioReturnPct={portfolioReturnPct}
+            alphaAcumulado={alphaCartera ?? 0}
+            spyEquivalente={spyEquivalenteCartera ?? 0}
+          />
 
           <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-900">
             <div className="flex items-center gap-8 text-sm flex-wrap">
@@ -231,10 +253,12 @@ export default function DashboardContent({
             </div>
           </div>
 
+          <PnLChart pnlHistory={pnlHistory} />
+
           {pnlHistory.length === 0 ? (
             <p className="text-sm text-slate-400 text-center py-8 dark:text-slate-500">No hay operaciones de venta registradas.</p>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto mt-4">
               <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
                 <thead>
                   <tr>
@@ -245,8 +269,8 @@ export default function DashboardContent({
                     <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">P. Compra (ARS)</th>
                     <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">P. Venta (ARS)</th>
                     <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">P&L (ARS)</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">P&L (USD)</th>
                     <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">% P&L</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Capital Operado</th>
                     <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Var. SPY</th>
                     <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Alpha</th>
                     <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Tiempo</th>
@@ -282,10 +306,10 @@ export default function DashboardContent({
                         <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-400">{formatARS(h.buyPriceARS)}</td>
                         <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-400">{formatARS(h.sellPriceARS)}</td>
                         <td className={`px-4 py-3 text-right font-medium ${pnlColor}`}>{formatARS(h.pnlARS)}</td>
-                        <td className={`px-4 py-3 text-right font-medium ${pnlColor}`}>{formatUSD(h.pnlUSD)}</td>
                         <td className={`px-4 py-3 text-right font-medium ${pnlColor}`}>
                           {h.pnlPercent >= 0 ? "+" : ""}{h.pnlPercent.toFixed(2)}%
                         </td>
+                        <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-400">{formatARS(h.totalInvestedARS)}</td>
                         <td className={`px-4 py-3 text-right font-medium text-xs ${spyColor}`}>
                           {h.spyVariation !== null && h.spyVariation !== undefined
                             ? `${h.spyVariation >= 0 ? "+" : ""}${h.spyVariation.toFixed(2)}%`
@@ -307,6 +331,19 @@ export default function DashboardContent({
                       </tr>
                     );
                   })}
+                  <tr className="bg-slate-50 dark:bg-slate-800/50 font-semibold">
+                    <td className="px-4 py-3 text-slate-500 text-xs dark:text-slate-400" colSpan={3}>Total</td>
+                    <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-400"></td>
+                    <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-400">{formatARS(totalCapitalOperado)}</td>
+                    <td className="px-4 py-3 text-right font-medium text-slate-900 dark:text-slate-100">{formatARS(cumulativePnL)}</td>
+                    <td className={`px-4 py-3 text-right font-medium ${pnlPercentAcumulado >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                      {pnlPercentAcumulado >= 0 ? "+" : ""}{pnlPercentAcumulado.toFixed(2)}%
+                    </td>
+                    <td className="px-4 py-3 text-right"></td>
+                    <td className="px-4 py-3 text-right"></td>
+                    <td className="px-4 py-3 text-center"></td>
+                    <td className="px-4 py-3 text-right"></td>
+                  </tr>
                 </tbody>
               </table>
             </div>
