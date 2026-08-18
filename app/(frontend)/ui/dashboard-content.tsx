@@ -126,6 +126,11 @@ export default function DashboardContent({
     }
   }, [refresh]);
 
+  const handleDeletePnLOperation = useCallback(async (operationId: string) => {
+    if (!window.confirm("¿Seguro que querés eliminar esta operación de venta?")) return;
+    showToast("Eliminar operación de venta - Función pending - requerirá backend", "info");
+  }, [refresh]);
+
   const cumulativePnL = pnlHistory.reduce((sum, h) => sum + h.pnlARS, 0);
   const totalPnL = cumulativePnL + summary.totalPnLARS;
   const totalCapitalOperado = pnlHistory.reduce((sum, h) => sum + h.totalInvestedARS, 0);
@@ -274,7 +279,7 @@ export default function DashboardContent({
                     <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Var. SPY</th>
                     <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Alpha</th>
                     <th className="px-4 py-3 text-center text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Tiempo</th>
-                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Rent. Anual</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -327,6 +332,16 @@ export default function DashboardContent({
                           {h.annualizedReturn !== null && h.annualizedReturn !== undefined
                             ? `${h.annualizedReturn >= 0 ? "+" : ""}${h.annualizedReturn.toFixed(2)}%`
                             : "—"}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <button
+                            onClick={() => handleDeletePnLOperation(h.id)}
+                            className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-400 transition-colors duration-200 hover:bg-red-50 hover:text-red-600 dark:text-slate-500 dark:hover:bg-red-900/30 dark:hover:text-red-400"
+                            aria-label="Eliminar operación"
+                            title="Eliminar operación"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
                         </td>
                       </tr>
                     );

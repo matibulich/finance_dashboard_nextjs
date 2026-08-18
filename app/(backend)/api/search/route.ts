@@ -4,7 +4,7 @@ import { SearchResult } from "@/app/(backend)/types/portfolio";
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get("q")?.trim();
-  const type = searchParams.get("type"); // "CRYPTO" | "STOCK"
+  const type = searchParams.get("type");
 
   if (!query || query.length < 1) {
     return NextResponse.json([]);
@@ -17,30 +17,31 @@ export async function GET(request: NextRequest) {
 }
 
 async function searchCrypto(query: string): Promise<NextResponse> {
-  const apiKey = process.env.CMC_API_KEY;
+  const apiKey = process.env.COINGECKO_API_KEY;
   if (!apiKey) return NextResponse.json([]);
 
-  const upper = query.toUpperCase();
+  const lower = query.toLowerCase();
   try {
     const res = await fetch(
-      "https://pro-api.coinmarketcap.com/v1/cryptocurrency/map?limit=200",
+      `https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(query)}`,
       {
-        headers: { "X-CMC_PRO_API_KEY": apiKey, Accept: "application/json" },
+        headers: { "x-cg-pro-api-key": apiKey, Accept: "application/json" },
         next: { revalidate: 3600 },
       }
     );
     if (!res.ok) return NextResponse.json([]);
     const data = await res.json();
 
-    const results: SearchResult[] = data.data
+    const coins = data.coins ?? [];
+    const results: SearchResult[] = coins
       .filter(
-        (c: { symbol: string; name: string }) =>
-          c.symbol.toUpperCase().startsWith(upper) ||
-          c.name.toUpperCase().startsWith(upper)
+        (c: { symbol: string; name: string; id: string }) =>
+          c.symbol.toLowerCase().startsWith(lower) ||
+          c.name.toLowerCase().startsWith(lower)
       )
       .slice(0, 10)
-      .map((c: { symbol: string; name: string }) => ({
-        symbol: c.symbol,
+      .map((c: { symbol: string; name: string; id: string }) => ({
+        symbol: c.symbol.toUpperCase(),
         name: c.name,
       }));
 

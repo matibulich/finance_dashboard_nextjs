@@ -176,6 +176,18 @@ PPP = (qty_actual * ppp_anterior + qty_nueva * precio_nuevo) / qty_total
 <!-- BEGIN:changelog -->
 # Changelog de Cambios
 
+## 2026-08-18
+
+### 1. Migración de CoinMarketCap a CoinGecko para precios de cripto
+- **Archivos:** `app/(backend)/actions/portfolio.ts`, `app/(backend)/api/prices/crypto/route.ts`, `app/(backend)/api/search/route.ts`
+- **Cambio:** Sustitución de la dependencia CMC por CoinGecko Basic API
+  1. Nuevo diccionario `SYMBOL_TO_COINGECKO_ID` con mapeo de símbolos a IDs de CoinGecko
+  2. Función `resolveSymbolViaSearch()` para resolución de símbolos no mapeados vía búsqueda
+  3. `fetchCryptoPrices()` ahora usa `https://api.coingecko.com/api/v3/simple/price` en lugar de CMC Pro
+  4. `searchCrypto()` y `GET /api/prices/crypto` actualizados para usar CoinGecko search endpoint
+- **Nueva variable de entorno:** `COINGECKO_API_KEY` (reemplaza `CMC_API_KEY`)
+- **Resultado:** Menor dependencia de API key costosa, rates free tier suficientes para el dashboard
+
 ## 2026-08-14
 
 ### 1. Fix: Variación SPY en pesos (ARS) usando CCL histórico

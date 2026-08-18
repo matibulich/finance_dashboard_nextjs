@@ -44,29 +44,174 @@ async function fetchDolarRates(): Promise<{ mep: MEPRate | null; ccl: MEPRate | 
   }
 }
 
+const SYMBOL_TO_COINGECKO_ID: Record<string, string> = {
+  BTC: "bitcoin",
+  ETH: "ethereum",
+  BNB: "binancecoin",
+  SOL: "solana",
+  ADA: "cardano",
+  XRP: "ripple",
+  DOGE: "dogecoin",
+  DOT: "polkadot",
+  MATIC: "matic-network",
+  AVAX: "avalanche-2",
+  LINK: "chainlink",
+  UNI: "uniswap",
+  LTC: "litecoin",
+  BCH: "bitcoin-cash",
+  ATOM: "cosmos",
+  XLM: "stellar",
+  VET: "vechain",
+  FIL: "filecoin",
+  TRX: "tron",
+  ETC: "ethereum-classic",
+  THETA: "theta-token",
+  AAVE: "aave",
+  ALGO: "algorand",
+  XTZ: "tezos",
+  EOS: "eos",
+  NEO: "neo",
+  DASH: "dash",
+  ZEC: "zcash",
+  XMR: "monero",
+  COMP: "compound-governance-token",
+  MKR: "maker",
+  SNX: "havven",
+  YFI: "yearn-finance",
+  SUSHI: "sushi",
+  CRV: "curve-dao-token",
+  "1INCH": "1inch",
+  BAL: "balancer",
+  REN: "republic-protocol",
+  UMA: "uma",
+  BAND: "band-protocol",
+  OCEAN: "ocean-protocol",
+  STORJ: "storj",
+  BAT: "basic-attention-token",
+  ZRX: "0x",
+  ENJ: "enjincoin",
+  MANA: "decentraland",
+  SAND: "the-sandbox",
+  AXS: "axie-infinity",
+  CHZ: "chiliz",
+  GRT: "the-graph",
+  LRC: "loopring",
+  ANKR: "ankr",
+  HOT: "holotoken",
+  NKN: "nkn",
+  CELR: "celer-network",
+  DENT: "dent",
+  WIN: "wink",
+  TFUEL: "theta-fuel",
+  ONE: "harmony",
+  HBAR: "hedera-hashgraph",
+  MTL: "metal",
+  OGN: "origin-protocol",
+  DODO: "dodo",
+  ALPHA: "alpha-finance",
+  CTK: "certik",
+  CTSI: "cartesi",
+  SKL: "skale",
+  REEF: "reef",
+  BURGER: "burger-swap",
+  BAKE: "bakerytoken",
+  DEGO: "dego-finance",
+  DYDX: "dydx-chain",
+  INJ: "injective-protocol",
+  PERP: "perpetual-protocol",
+  RAY: "raydium",
+  SRM: "serum",
+  FTT: "ftx-token",
+  SOLVE: "solve-care",
+  WAVES: "waves",
+  KSM: "kusama",
+  ICP: "internet-computer",
+  FLOW: "flow",
+  NEAR: "near",
+  EGLD: "elrond-erd-2",
+  ROSE: "oasis-network",
+  KLAY: "klay-token",
+  CELO: "celo",
+};
+
 async function fetchCryptoPrices(symbols: string[]): Promise<Record<string, { price: number; percent_change_24h: number }>> {
   if (symbols.length === 0) return {};
-  const apiKey = process.env.CMC_API_KEY;
+  const apiKey = process.env.COINGECKO_API_KEY;
   if (!apiKey) return {};
   try {
-    const url = new URL("https://pro-api.coinmarketcap.com/v3/cryptocurrency/quotes/latest");
-    url.searchParams.set("symbol", symbols.join(","));
+    const idMap: Record<string, string> = {};
+    const unresolved: string[] = [];
+
+    for (const sym of symbols) {
+      const upper = sym.toUpperCase();
+      const id = SYMBOL_TO_COINGECKO_ID[upper];
+      if (id) {
+        idMap[sym] = id;
+      } else {
+        unresolved.push(sym);
+      }
+    }
+
+    if (unresolved.length > 0) {
+      await Promise.all(
+        unresolved.map(async (sym) => {
+          const id = await resolveSymbolViaSearch(sym);
+          if (id) idMap[sym] = id;
+        })
+      );
+    }
+
+    const ids = Object.values(idMap);
+    if (ids.length === 0) return {};
+
+    const url = new URL("https://api.coingecko.com/api/v3/simple/price");
+    url.searchParams.set("ids", ids.join(","));
+    url.searchParams.set("vs_currencies", "usd");
+    url.searchParams.set("include_24hr_change", "true");
+
     const res = await fetch(url.toString(), {
-      headers: { "X-CMC_PRO_API_KEY": apiKey, Accept: "application/json" },
+      headers: { "x-cg-pro-api-key": apiKey, Accept: "application/json" },
       next: { revalidate: 60 },
     });
     if (!res.ok) return {};
     const data = await res.json();
+
     const prices: Record<string, { price: number; percent_change_24h: number }> = {};
-    for (const [, asset] of Object.entries(data.data) as [string, { symbol: string; quote: { USD: { price: number; percent_change_24h: number } } }][]) {
-      prices[asset.symbol] = {
-        price: asset.quote.USD.price,
-        percent_change_24h: asset.quote.USD.percent_change_24h,
-      };
+    for (const [sym, id] of Object.entries(idMap)) {
+      const coinData = data[id];
+      if (coinData) {
+        prices[sym] = {
+          price: coinData.usd,
+          percent_change_24h: coinData.usd_24h_change ?? 0,
+        };
+      }
     }
     return prices;
   } catch {
     return {};
+  }
+}
+
+async function resolveSymbolViaSearch(symbol: string): Promise<string | null> {
+  const apiKey = process.env.COINGECKO_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const res = await fetch(
+      `https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(symbol)}`,
+      {
+        headers: { "x-cg-pro-api-key": apiKey, Accept: "application/json" },
+        next: { revalidate: 3600 },
+      }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const coins = data.coins ?? [];
+    const match = coins.find(
+      (c: { symbol: string; id: string }) => c.symbol.toUpperCase() === symbol.toUpperCase()
+    );
+    return match?.id ?? null;
+  } catch {
+    return null;
   }
 }
 
