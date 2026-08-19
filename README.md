@@ -62,7 +62,7 @@ Abrí [http://localhost:3000](http://localhost:3000) en el navegador.
 |----------|-------------|
 | `DATABASE_URL` | URL de conexión a PostgreSQL |
 | `JWT_SECRET` | Secreto para firmar tokens JWT |
-| `CMC_API_KEY` | API key de CoinMarketCap |
+| `COINGECKO_API_KEY` | API key de Coingecko |
 
 ## Estructura
 
