@@ -1226,6 +1226,54 @@ export async function deleteCapitalMovement(
   }
 }
 
+export async function deletePnLOperation(
+  _prevState: PortfolioActionState,
+  formData: FormData
+): Promise<PortfolioActionState> {
+  try {
+    const userId = await getUserIdFromToken();
+    if (!userId) return { success: false, message: "No autenticado" };
+
+    const operationId = formData.get("operationId") as string;
+    if (!operationId) return { success: false, message: "Operación no válida" };
+
+    const operation = await prisma.pnLHistory.findFirst({
+      where: { id: operationId, userId },
+    });
+    if (!operation) return { success: false, message: "Operación no encontrada" };
+
+    await prisma.$transaction(async (tx) => {
+      await tx.pnLHistory.delete({ where: { id: operationId } });
+
+      const capitalMovements = await tx.capitalMovement.findMany({
+        where: { userId },
+        select: { type: true, amount: true },
+      });
+      const capitalAportado = capitalMovements
+        .filter((m) => m.type === "APORTE" || m.type === "CAPITAL_INICIAL")
+        .reduce((sum, m) => sum + Number(m.amount), 0);
+      const totalRetirado = capitalMovements
+        .filter((m) => m.type === "RETIRO")
+        .reduce((sum, m) => sum + Number(m.amount), 0);
+
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          capitalAportado: Math.round(capitalAportado * 100) / 100,
+          totalRetirado: Math.round(totalRetirado * 100) / 100,
+        },
+      });
+    });
+
+    return { success: true, message: "Operación eliminada correctamente" };
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : "Error al eliminar la operación",
+    };
+  }
+}
+
 export async function getPortfolio(): Promise<{
   assets: AssetWithPrice[];
   summary: PortfolioSummary;

@@ -128,7 +128,20 @@ export default function DashboardContent({
 
   const handleDeletePnLOperation = useCallback(async (operationId: string) => {
     if (!window.confirm("¿Seguro que querés eliminar esta operación de venta?")) return;
-    showToast("Eliminar operación de venta - Función pending - requerirá backend", "info");
+    const formData = new FormData();
+    formData.set("operationId", operationId);
+    try {
+      const { deletePnLOperation } = await import("@/app/(backend)/actions/portfolio");
+      const result = await deletePnLOperation({ success: true, message: "" }, formData);
+      if (result.success) {
+        showToast(result.message, "success");
+        refresh();
+      } else {
+        showToast(result.message, "error");
+      }
+    } catch {
+      showToast("Error al eliminar la operación", "error");
+    }
   }, [refresh]);
 
   const cumulativePnL = pnlHistory.reduce((sum, h) => sum + h.pnlARS, 0);
