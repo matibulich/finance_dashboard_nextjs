@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-type ToastType = "success" | "error";
+type ToastType = "success" | "error" | "info";
 
 export function showToast(message: string, type: ToastType = "success") {
   const event = new CustomEvent("toast", { detail: { message, type } });
