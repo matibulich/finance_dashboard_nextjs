@@ -28,7 +28,7 @@ Dashboard financiero personal para gestionar portafolios de CEDEARs y criptomone
 - Node.js 18+
 - PostgreSQL
 - API keys:
-  - `COINGECKO_API_KEY` — (https://api.coingecko.com/api/v3/ping?x_cg_demo_api_key=YOUR_API_KEY)
+  - `COINGECKO_API_KEY` — (https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&x_cg_demo_api_key=YOUR_API_KEY)
 
 ## Instalación
 
