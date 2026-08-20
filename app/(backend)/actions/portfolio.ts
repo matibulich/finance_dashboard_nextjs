@@ -13,6 +13,7 @@ import {
 } from "@/app/(backend)/types/portfolio";
 import { AssetType } from "@prisma/client";
 import { getCedearRatio } from "@/app/(backend)/lib/cedears";
+import { fetchCryptoPrices, resolveSymbolViaSearch } from "@/app/(backend)/lib/crypto";
 
 async function getUserIdFromToken(): Promise<string | null> {
   const cookieStore = await cookies();
@@ -44,55 +45,7 @@ async function fetchDolarRates(): Promise<{ mep: MEPRate | null; ccl: MEPRate | 
   }
 }
 
-async function fetchCryptoPrices(symbols: string[]): Promise<Record<string, { price: number; percent_change_24h: number }>> {
-  if (symbols.length === 0) return {};
-  const apiKey = process.env.COINGECKO_API_KEY;
-  if (!apiKey) return {};
-  try {
-    const idMap: Record<string, string> = {};
-    const promises: Array<Promise<void>> = [];
 
-    for (const sym of symbols) {
-      promises.push(
-        (async () => {
-          const id = await resolveSymbolViaSearch(sym);
-          if (id) idMap[sym] = id;
-        })()
-      );
-    }
-
-    await Promise.all(promises);
-
-    const ids = Object.values(idMap);
-    if (ids.length === 0) return {};
-
-    const url = new URL("https://api.coingecko.com/api/v3/simple/price");
-    url.searchParams.set("ids", ids.join(","));
-    url.searchParams.set("vs_currencies", "usd");
-    url.searchParams.set("include_24hr_change", "true");
-
-    const res = await fetch(url.toString(), {
-      headers: { "x-cg-pro-api-key": apiKey, Accept: "application/json" },
-      next: { revalidate: 60 },
-    });
-    if (!res.ok) return {};
-    const data = await res.json();
-
-    const prices: Record<string, { price: number; percent_change_24h: number }> = {};
-    for (const [sym, id] of Object.entries(idMap)) {
-      const coinData = data[id];
-      if (coinData) {
-        prices[sym] = {
-          price: coinData.usd,
-          percent_change_24h: coinData.usd_24h_change ?? 0,
-        };
-      }
-    }
-    return prices;
-  } catch {
-    return {};
-  }
-}
 
 async function resolveSymbolViaSearch(symbol: string): Promise<string | null> {
   const apiKey = process.env.COINGECKO_API_KEY;
