@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const SYMBOL_TO_COINGECKO_ID: Record<string, string> = {
+  ARG:"argentine-football-association-fan-token",
   BTC: "bitcoin",
   ETH: "ethereum",
   BNB: "binancecoin",
