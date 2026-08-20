@@ -21,14 +21,14 @@ Dashboard financiero personal para gestionar portafolios de CEDEARs y criptomone
 - **Base de datos:** PostgreSQL + Prisma ORM
 - **Estilos:** Tailwind CSS v4 + shadcn/ui
 - **Auth:** JWT + bcrypt
-- **APIs externas:** CoinMarketCap, Yahoo Finance, DolarApi
+- **APIs externas:** Coingecko, Yahoo Finance, DolarApi
 
 ## Requisitos
 
 - Node.js 18+
 - PostgreSQL
 - API keys:
-  - `CMC_API_KEY` — [CoinMarketCap](https://coinmarketcap.com/api/) (free tier: 15K calls/mes)
+  - `COINGECKO_API_KEY` — (https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd&x_cg_demo_api_key=YOUR_API_KEY)
 
 ## Instalación
 
@@ -62,7 +62,7 @@ Abrí [http://localhost:3000](http://localhost:3000) en el navegador.
 |----------|-------------|
 | `DATABASE_URL` | URL de conexión a PostgreSQL |
 | `JWT_SECRET` | Secreto para firmar tokens JWT |
-| `CMC_API_KEY` | API key de CoinMarketCap |
+| `COINGECKO_API_KEY` | API key de Coingecko |
 
 ## Estructura
 
