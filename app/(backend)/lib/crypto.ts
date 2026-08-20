@@ -5,7 +5,7 @@ function symbolToId(symbol: string, symbolToIdMap: Record<string, string>): stri
   return symbolToIdMap[upper] ?? null;
 }
 
-async function resolveSymbolViaSearch(symbol: string): Promise<string | null> {
+export async function resolveSymbolViaSearch(symbol: string): Promise<string | null> {
   const apiKey = process.env.COINGECKO_API_KEY;
   const headers: HeadersInit = {
     Accept: "application/json",
