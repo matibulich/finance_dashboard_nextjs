@@ -46,35 +46,6 @@ async function fetchDolarRates(): Promise<{ mep: MEPRate | null; ccl: MEPRate | 
 }
 
 
-
-async function resolveSymbolViaSearch(symbol: string): Promise<string | null> {
-  const apiKey = process.env.COINGECKO_API_KEY;
-  const headers: HeadersInit = {
-    Accept: "application/json",
-  };
-  if (apiKey) {
-    headers["x-cg-pro-api-key"] = apiKey;
-  }
-  try {
-    const res = await fetch(
-      `https://api.coingecko.com/api/v3/search?query=${encodeURIComponent(symbol)}`,
-      {
-        headers,
-        next: { revalidate: 3600 },
-      }
-    );
-    if (!res.ok) return null;
-    const data = await res.json();
-    const coins = data.coins ?? [];
-    const match = coins.find(
-      (c: { symbol: string; id: string }) => c.symbol.toUpperCase() === symbol.toUpperCase()
-    );
-    return match?.id ?? null;
-  } catch {
-    return null;
-  }
-}
-
 async function fetchStockPrices(symbols: string[]): Promise<{
   prices: Record<string, { priceUSD: number | null; priceARS: number | null; changePercent: number }>;
   fallbacks: Record<string, { priceUSD: number; changePercent: number }>;
