@@ -27,6 +27,22 @@ async function getUserIdFromToken(): Promise<string | null> {
   }
 }
 
+async function fetchCriptoRate(): Promise<{ compra: number; venta: number } | null> {
+  try {
+    const res = await fetch("https://dolarapi.com/v1/dolares/cripto", {
+      next: { revalidate: 120 },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return {
+      compra: data.compra ?? null,
+      venta: data.venta ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function fetchDolarRates(): Promise<{ mep: MEPRate | null; ccl: MEPRate | null }> {
   try {
     const res = await fetch("https://dolarapi.com/v1/dolares", {
@@ -213,6 +229,7 @@ export async function addAsset(
     let purchasePriceARSValue: number | null = null;
 
     const { mep: mepRate, ccl: cclRate } = await fetchDolarRates();
+    const criptoRate = await fetchCriptoRate();
 
     if (type === AssetType.STOCK) {
       const baseSymbol = symbol.endsWith(".BA") ? symbol.slice(0, -3) : symbol;
@@ -233,8 +250,8 @@ export async function addAsset(
         purchasePriceARSValue = Math.round(price * 100) / 100;
       }
     } else if (type === AssetType.CRYPTO) {
-      if (mepRate) {
-        purchasePriceARSValue = Math.round(price * mepRate.venta * 100) / 100;
+      if (criptoRate) {
+        purchasePriceARSValue = Math.round(price * criptoRate.venta * 100) / 100;
       }
     }
 
@@ -253,8 +270,8 @@ export async function addAsset(
         costARS = price * quantity;
       }
     } else {
-      if (mepRate) {
-        costARS = price * quantity * mepRate.venta;
+      if (criptoRate) {
+        costARS = price * quantity * criptoRate.venta;
       }
     }
 
@@ -422,10 +439,10 @@ export async function sellAsset(
           buyPriceARS = Math.round(buyPriceUSD * cclVenta * 100) / 100;
         }
       } else if (asset.type === AssetType.CRYPTO) {
-        const { mep: mepRate } = await fetchDolarRates();
-        const mepVenta = mepRate?.venta ?? 0;
-        if (mepVenta > 0) {
-          buyPriceARS = Math.round(buyPriceUSD * mepVenta * 100) / 100;
+        const criptoRate = await fetchCriptoRate();
+        const criptoVenta = criptoRate?.venta ?? 0;
+        if (criptoVenta > 0) {
+          buyPriceARS = Math.round(buyPriceUSD * criptoVenta * 100) / 100;
         }
       }
     }
@@ -1221,10 +1238,11 @@ export async function getPortfolio(): Promise<{
   const cryptoAssets = assets.filter((a) => a.type === AssetType.CRYPTO);
   const stockAssets = assets.filter((a) => a.type === AssetType.STOCK);
 
-  const [cryptoPrices, stockResult, dolarRates] = await Promise.all([
+  const [cryptoPrices, stockResult, dolarRates, criptoRate] = await Promise.all([
     fetchCryptoPrices(cryptoAssets.map((a) => a.symbol)),
     fetchStockPrices(stockAssets.map((a) => a.symbol)),
     fetchDolarRates(),
+    fetchCriptoRate(),
   ]);
 
   const mep = dolarRates.mep;
@@ -1236,6 +1254,7 @@ export async function getPortfolio(): Promise<{
   const mepVenta = customMEP ?? mep?.venta ?? 0;
   const cclVenta = ccl?.venta ?? 0;
   const cclForCedears = cclVenta;
+  const criptoVenta = criptoRate?.venta ?? 0;
 
   const assetsWithPrice: AssetWithPrice[] = assets.map((a) => {
     const qty = Number(a.quantity);
@@ -1252,9 +1271,9 @@ export async function getPortfolio(): Promise<{
       if (cryptoPrice) {
         currentPriceUSD = cryptoPrice.price;
         changePercent = cryptoPrice.percent_change_24h;
-        if (mepVenta > 0) {
-          currentPriceARS = Math.round(currentPriceUSD * mepVenta * 100) / 100;
-          purchasePriceARS = dbPurchasePriceARS ?? Math.round(avgPrice * mepVenta * 100) / 100;
+        if (criptoVenta > 0) {
+          currentPriceARS = Math.round(currentPriceUSD * criptoVenta * 100) / 100;
+          purchasePriceARS = dbPurchasePriceARS ?? Math.round(avgPrice * criptoVenta * 100) / 100;
         }
       }
     } else {
@@ -1334,18 +1353,20 @@ export async function getPortfolio(): Promise<{
 
   const liquidityARS = Number(user?.liquidityARS ?? 0);
   const totalInvestedUSD = assetsWithPrice.reduce((sum, a) => sum + a.averagePrice * a.quantity, 0);
-  const totalInvestedARS = mepVenta > 0
+  const totalInvestedARS = (criptoVenta > 0 || mepVenta > 0 || cclForCedears > 0)
     ? Math.round(assetsWithPrice.reduce((sum, a) => {
         if (a.purchasePriceARS) return sum + a.purchasePriceARS * a.quantity;
-        return sum + a.averagePrice * a.quantity * mepVenta;
+        const rate = a.type === AssetType.CRYPTO ? (criptoVenta > 0 ? criptoVenta : mepVenta) : cclForCedears || mepVenta;
+        return sum + a.averagePrice * a.quantity * rate;
       }, 0) * 100) / 100
     : 0;
   const totalValueUSD = assetsWithPrice.reduce((sum, a) => sum + a.currentPriceUSD * a.quantity, 0);
   const totalPnLUSD = Math.round((totalValueUSD - totalInvestedUSD) * 100) / 100;
-  const totalValueARS = mepVenta > 0
+  const totalValueARS = (criptoVenta > 0 || mepVenta > 0 || cclForCedears > 0)
     ? Math.round(assetsWithPrice.reduce((sum, a) => {
         if (a.currentPriceARS) return sum + a.currentPriceARS * a.quantity;
-        return sum + a.currentPriceUSD * a.quantity * mepVenta;
+        const rate = a.type === AssetType.CRYPTO ? (criptoVenta > 0 ? criptoVenta : mepVenta) : cclForCedears || mepVenta;
+        return sum + a.currentPriceUSD * a.quantity * rate;
       }, 0) * 100) / 100
     : 0;
   const totalPnLARS = Math.round((totalValueARS - totalInvestedARS) * 100) / 100;
